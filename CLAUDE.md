@@ -238,6 +238,16 @@ Query the login password box as `getByLabelText('Password')`, exactly. `Password
 
 ## Environment note
 
-Node here is v18.2.0, which has `globalThis.crypto.subtle` — so `shared/password.js` runs unchanged on the server, verified directly. The polyfill in `src/test/setup.js` is for **jsdom**, which ships `getRandomValues` but not `SubtleCrypto`; it is not a Node gap. `scripts/generate-seed.mjs` guards defensively for older Node but is a no-op here.
+Node here is v18.2.0. **Web Crypto is not a global in module files** on this version — it arrives by default in Node 19. Every entry point that touches `shared/password.js` therefore installs it:
+
+| Entry point | Why |
+|---|---|
+| `server/env.js` | the API server |
+| `scripts/generate-seed.mjs` | hashing seed passwords |
+| `src/test/setup.js` | jsdom lacks `SubtleCrypto` |
+
+**Do not "verify" this with `node -e`.** Node 18 exposes `globalThis.crypto` inside `-e` one-liners but *not* in `.js`/`.mjs` files, so a one-liner reports the global as present when the server would fail. Test with a real file. This cost a debugging session: without the polyfill every hash throws, `verifyPassword` returned false, and login reported "Email or password is incorrect" with nothing in the logs.
+
+`shared/password.js` now derives **outside** its try/catch — only base64 decoding is tolerated, since a malformed stored hash is a genuine non-match while a missing crypto implementation is a broken environment that must surface loudly.
 
 `node --watch` does not exist before Node 18.11, which is why `nodemon` runs the dev server.

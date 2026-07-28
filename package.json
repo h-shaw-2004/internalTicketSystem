@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed": "node scripts/generate-seed.mjs"
+    "seed": "node scripts/generate-seed.mjs",
+    "check:db": "node scripts/check-db.mjs"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

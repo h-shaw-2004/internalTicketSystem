@@ -47,12 +47,22 @@ export async function verifyPassword(password, stored) {
 
   const [, , iterations, salt, expected] = parts;
 
+  // Only base64 decoding is tolerated here — a malformed stored hash is a
+  // legitimate "no match". Deriving happens outside the catch on purpose: a
+  // missing Web Crypto implementation is a broken environment, not a wrong
+  // password, and swallowing it turns every login into "incorrect password"
+  // with nothing in the logs.
+  let saltBytes;
+  let expectedBytes;
   try {
-    const hash = await derive(password, fromBase64(salt), Number(iterations));
-    return timingSafeEqual(new Uint8Array(hash), fromBase64(expected));
+    saltBytes = fromBase64(salt);
+    expectedBytes = fromBase64(expected);
   } catch {
     return false;
   }
+
+  const hash = await derive(password, saltBytes, Number(iterations));
+  return timingSafeEqual(new Uint8Array(hash), expectedBytes);
 }
 
 function timingSafeEqual(a, b) {
