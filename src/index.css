@@ -1,17 +1,248 @@
 :root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #111827;
-  background: #f9fafb;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --border: #dfe1e6;
+  --text: #172b4d;
+  --muted: #6b778c;
+  --accent: #0052cc;
+  --accent-hover: #0747a6;
+  --danger-bg: #ffebe6;
+  --danger-border: #ffbdad;
+  --danger-text: #bf2600;
+  --radius: 6px;
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  min-width: 320px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+h1,
+h2 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* --- Auth pages ---------------------------------------------------------- */
+
+.auth-layout {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 1px 3px rgb(9 30 66 / 0.12);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.auth-header h1 {
+  font-size: 22px;
+}
+
+.auth-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.field input {
+  width: 100%;
+  padding: 9px 12px;
+  font: inherit;
+  color: inherit;
+  background: #fafbfc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.field input:focus {
+  outline: none;
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(0 82 204 / 0.2);
+}
+
+.field input[aria-invalid='true'] {
+  border-color: var(--danger-border);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.alert {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius);
+  color: var(--danger-text);
+}
+
+.button {
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.button-ghost {
+  color: var(--text);
+  background: transparent;
+  border-color: var(--border);
+}
+
+.button-ghost:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+.auth-switch {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth-switch a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-switch a:hover {
+  text-decoration: underline;
+}
+
+.route-status {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+/* --- Signed-in shell ----------------------------------------------------- */
+
+.app-layout {
   min-height: 100vh;
 }
 
-* {
-  box-sizing: border-box;
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 18px;
+}
+
+.app-header p {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: #deebff;
+  border-radius: 10px;
+}
+
+.app-main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.panel h2 {
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+
+.access-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.access-list li + li {
+  margin-top: 6px;
 }
