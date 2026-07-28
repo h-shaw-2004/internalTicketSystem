@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import * as authApi from '../api/auth';
+import * as ticketsApi from '../api/tickets';
 
 vi.mock('../api/auth', () => ({
   login: vi.fn(),
@@ -13,17 +14,30 @@ vi.mock('../api/auth', () => ({
   AuthError: class AuthError extends Error {},
 }));
 
+vi.mock('../api/tickets', () => ({
+  listMyTickets: vi.fn(),
+  listAgencyTickets: vi.fn(),
+  listEscalatedTickets: vi.fn(),
+  listTicketsForAgency: vi.fn(),
+  getTicket: vi.fn(),
+  createTicket: vi.fn(),
+  updateTicketStatus: vi.fn(),
+  escalateTicket: vi.fn(),
+  TicketError: class TicketError extends Error {},
+}));
+
 describe('where signing in lands', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authApi.getCurrentUser.mockResolvedValue(null);
     authApi.listChildAccounts.mockResolvedValue([]);
+    ticketsApi.listEscalatedTickets.mockResolvedValue([]);
   });
 
-  it('goes to the dashboard even when bounced off a deep link', async () => {
-    // Arriving at a protected page signed out is what used to stash a "return
-    // to" location and drop the next account onto someone else's page.
-    window.history.pushState({}, '', '/tickets');
+  it('goes to the ticket list, not back to the deep link it bounced off', async () => {
+    // Being bounced off a protected page is what used to stash a "return to"
+    // location and drop the next account onto the previous one's screen.
+    window.history.pushState({}, '', '/tickets/some-other-persons-ticket');
 
     render(<App />);
     await screen.findByRole('heading', { name: /sign in/i });
@@ -48,10 +62,11 @@ describe('where signing in lands', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
+    // The list ("Tickets"), not the detail page ("Ticket") it was aimed at.
     expect(
-      await screen.findByRole('heading', { name: /internal ticket system/i })
+      await screen.findByRole('heading', { level: 1, name: /^tickets$/i })
     ).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /^tickets$/i })).not.toBeInTheDocument();
+    expect(ticketsApi.getTicket).not.toHaveBeenCalled();
   });
 });
 

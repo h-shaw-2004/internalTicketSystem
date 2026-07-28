@@ -42,15 +42,21 @@ export async function logout() {
 }
 
 /**
- * Create the account one level below the signed-in user. The new role and the
- * temporary password are both decided by the server; the caller supplies only a
- * name and an email.
+ * Create an account below the signed-in user.
  *
- * Returns `{ account, temporaryPassword }` — the plaintext arrives exactly once
- * and is never recoverable afterwards.
+ * `role` may be omitted when the caller has only one option (an agency always
+ * creates clients). `agencyId` is required only when an admin creates a client,
+ * since a client's parent must be an agency and cannot be inferred.
+ *
+ * The server re-checks both against what the session is allowed to create, and
+ * generates the password. Returns `{ account, temporaryPassword }` — the
+ * plaintext arrives exactly once and is never recoverable afterwards.
  */
-export async function createAccount({ fullName, email }) {
-  return request('/accounts', { method: 'POST', body: { fullName, email } });
+export async function createAccount({ fullName, email, role, agencyId }) {
+  return request('/accounts', {
+    method: 'POST',
+    body: { fullName, email, role, agencyId },
+  });
 }
 
 /** The accounts the signed-in user owns, newest first. */

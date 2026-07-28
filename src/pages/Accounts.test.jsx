@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import * as authApi from '../api/auth';
+import * as ticketsApi from '../api/tickets';
 
 vi.mock('../api/auth', () => ({
   login: vi.fn(),
@@ -11,6 +12,18 @@ vi.mock('../api/auth', () => ({
   listChildAccounts: vi.fn(),
   setInitialPassword: vi.fn(),
   AuthError: class AuthError extends Error {},
+}));
+
+vi.mock('../api/tickets', () => ({
+  listMyTickets: vi.fn(),
+  listAgencyTickets: vi.fn(),
+  listEscalatedTickets: vi.fn(),
+  listTicketsForAgency: vi.fn(),
+  getTicket: vi.fn(),
+  createTicket: vi.fn(),
+  updateTicketStatus: vi.fn(),
+  escalateTicket: vi.fn(),
+  TicketError: class TicketError extends Error {},
 }));
 
 const user = (role, overrides = {}) => ({
@@ -44,6 +57,10 @@ const created = user('agency', {
 describe('account creation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ticketsApi.listMyTickets.mockResolvedValue([]);
+    ticketsApi.listAgencyTickets.mockResolvedValue([]);
+    ticketsApi.listEscalatedTickets.mockResolvedValue([]);
+    ticketsApi.listTicketsForAgency.mockResolvedValue([]);
     authApi.listChildAccounts.mockResolvedValue([]);
     authApi.createAccount.mockResolvedValue({
       account: created,
@@ -56,8 +73,8 @@ describe('account creation', () => {
     authApi.listChildAccounts.mockResolvedValueOnce([]).mockResolvedValueOnce([created]);
 
     render(<App />);
-    await screen.findByRole('heading', { name: /new agency account/i });
-    await screen.findByText(/no agency accounts yet/i);
+    await screen.findByRole('heading', { name: /^new account$/i });
+    await screen.findByText(/no agencies yet/i);
 
     fillForm({ fullName: 'New Agency', email: 'new@agency.com' });
     fireEvent.click(screen.getByRole('button', { name: /create agency account/i }));
@@ -76,8 +93,8 @@ describe('account creation', () => {
     signedInAs('admin');
 
     render(<App />);
-    await screen.findByRole('heading', { name: /new agency account/i });
-    await screen.findByText(/no agency accounts yet/i);
+    await screen.findByRole('heading', { name: /^new account$/i });
+    await screen.findByText(/no agencies yet/i);
 
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
 
@@ -85,10 +102,13 @@ describe('account creation', () => {
     fireEvent.click(screen.getByRole('button', { name: /create agency account/i }));
     await screen.findByRole('status');
 
-    // Neither a role nor a password — both are decided below this layer.
+    // A role is sent now that an admin has a choice, but never a password — and
+    // the server re-checks the role against what this session may create.
     expect(authApi.createAccount).toHaveBeenCalledWith({
       fullName: 'New Agency',
       email: 'new@agency.com',
+      role: 'agency',
+      agencyId: '',
     });
   });
 
@@ -100,7 +120,7 @@ describe('account creation', () => {
     ]);
 
     render(<App />);
-    await screen.findByRole('heading', { name: /new agency account/i });
+    await screen.findByRole('heading', { name: /^new account$/i });
 
     const pending = (await screen.findByText('new@agency.com')).closest('tr');
     const settled = screen.getByText('settled@agency.com').closest('tr');
@@ -109,13 +129,179 @@ describe('account creation', () => {
     expect(settled).toHaveTextContent(/active/i);
   });
 
-  it('offers an agency clients, not agencies', async () => {
+  it('offers an agency clients only, with no type to choose', async () => {
     signedInAs('agency');
 
     render(<App />);
     expect(await screen.findByRole('heading', { name: /new client account/i })).toBeInTheDocument();
     await screen.findByText(/no client accounts yet/i);
-    expect(screen.queryByRole('heading', { name: /new agency account/i })).not.toBeInTheDocument();
+
+    // One option means no picker, and no agency to name — it is the agency.
+    expect(screen.queryByLabelText(/account type/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^agency$/i)).not.toBeInTheDocument();
+  });
+
+  it('lets an admin create a client assigned to one of its agencies', async () => {
+    signedInAs('admin');
+    const agency = user('agency', {
+      id: 'agency-7',
+      email: 'one@agency.com',
+      fullName: 'Agency One',
+    });
+    authApi.listChildAccounts.mockResolvedValue([agency]);
+    authApi.createAccount.mockResolvedValue({
+      account: user('client', { id: 'new-c', email: 'new@client.com', fullName: 'New Client' }),
+      temporaryPassword: 'Tmp7#kZq4vRn2Wp',
+    });
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /^new account$/i });
+
+    // The agency picker only appears once Client is chosen.
+    expect(screen.queryByLabelText(/^agency$/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/account type/i), { target: { value: 'client' } });
+    fireEvent.change(await screen.findByLabelText(/^agency$/i), {
+      target: { value: 'agency-7' },
+    });
+
+    fillForm({ fullName: 'New Client', email: 'new@client.com' });
+    fireEvent.click(screen.getByRole('button', { name: /create client account/i }));
+
+    await screen.findByRole('status');
+    expect(authApi.createAccount).toHaveBeenCalledWith({
+      fullName: 'New Client',
+      email: 'new@client.com',
+      role: 'client',
+      agencyId: 'agency-7',
+    });
+  });
+
+  it('offers only the admin own agencies as the parent', async () => {
+    signedInAs('admin');
+    authApi.listChildAccounts.mockResolvedValue([
+      user('agency', { id: 'agency-7', email: 'one@agency.com', fullName: 'Agency One' }),
+      // A grandchild: in the list, but never a parent option.
+      user('client', { id: 'client-9', email: 'existing@client.com', fullName: 'Existing' }),
+    ]);
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /^new account$/i });
+    fireEvent.change(screen.getByLabelText(/account type/i), { target: { value: 'client' } });
+
+    const picker = await screen.findByLabelText(/^agency$/i);
+    const options = within(picker)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+
+    expect(options).toHaveLength(2); // the placeholder plus one agency
+    expect(options.join(' ')).toMatch(/Agency One/);
+    expect(options.join(' ')).not.toMatch(/Existing/);
+  });
+
+  it('blocks creating a client when there is no agency to attach it to', async () => {
+    signedInAs('admin');
+    authApi.listChildAccounts.mockResolvedValue([]);
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /^new account$/i });
+    fireEvent.change(screen.getByLabelText(/account type/i), { target: { value: 'client' } });
+
+    expect(await screen.findByText(/create an agency first/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create client account/i })).toBeDisabled();
+  });
+
+  it('lists an admin the agencies only, with clients one level in', async () => {
+    signedInAs('admin');
+    authApi.listChildAccounts.mockResolvedValue([
+      user('agency', { id: 'agency-7', email: 'one@agency.com', fullName: 'Agency One' }),
+      user('agency', { id: 'agency-8', email: 'two@agency.com', fullName: 'Agency Two' }),
+      user('client', {
+        id: 'client-9',
+        email: 'under@client.com',
+        fullName: 'Under One',
+        parentId: 'agency-7',
+      }),
+    ]);
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /your agencies/i });
+
+    // Clients are not in the top-level table — that is the whole point.
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('one@agency.com')).toBeInTheDocument();
+    expect(within(table).queryByText('under@client.com')).not.toBeInTheDocument();
+
+    // The count is visible without drilling in.
+    const agencyRow = within(table).getByText('one@agency.com').closest('tr');
+    expect(agencyRow).toHaveTextContent('1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Agency One' }));
+
+    expect(
+      await screen.findByRole('heading', { name: /clients of agency one/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText('under@client.com')).toBeInTheDocument();
+  });
+
+  it('opens an agency from anywhere on its row', async () => {
+    signedInAs('admin');
+    authApi.listChildAccounts.mockResolvedValue([
+      user('agency', { id: 'agency-7', email: 'one@agency.com', fullName: 'Agency One' }),
+      user('client', {
+        id: 'client-9',
+        email: 'under@client.com',
+        fullName: 'Under One',
+        parentId: 'agency-7',
+      }),
+    ]);
+
+    render(<App />);
+    const table = await screen.findByRole('table');
+
+    // The email cell, not the name button.
+    fireEvent.click(within(table).getByText('one@agency.com'));
+
+    expect(
+      await screen.findByRole('heading', { name: /clients of agency one/i })
+    ).toBeInTheDocument();
+  });
+
+  it('says so when a chosen agency has no clients', async () => {
+    signedInAs('admin');
+    authApi.listChildAccounts.mockResolvedValue([
+      user('agency', { id: 'agency-8', email: 'two@agency.com', fullName: 'Agency Two' }),
+    ]);
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /your agencies/i });
+    fireEvent.click(screen.getByRole('button', { name: 'Agency Two' }));
+
+    expect(await screen.findByText(/agency two has no clients yet/i)).toBeInTheDocument();
+  });
+
+  it('closes the drilled-in agency again', async () => {
+    signedInAs('admin');
+    authApi.listChildAccounts.mockResolvedValue([
+      user('agency', { id: 'agency-7', email: 'one@agency.com', fullName: 'Agency One' }),
+    ]);
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /your agencies/i });
+
+    const toggle = screen.getByRole('button', { name: 'Agency One' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(toggle);
+    await screen.findByRole('heading', { name: /clients of agency one/i });
+    expect(screen.getByRole('button', { name: 'Agency One' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(
+      screen.queryByRole('heading', { name: /clients of agency one/i })
+    ).not.toBeInTheDocument();
   });
 
   it('keeps clients out of the accounts page entirely', async () => {
@@ -123,7 +309,7 @@ describe('account creation', () => {
 
     render(<App />);
     expect(
-      await screen.findByRole('heading', { name: /internal ticket system/i })
+      await screen.findByRole('heading', { level: 1, name: /^tickets$/i })
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /new .* account/i })).not.toBeInTheDocument();
     expect(authApi.listChildAccounts).not.toHaveBeenCalled();
@@ -136,8 +322,8 @@ describe('account creation', () => {
     );
 
     render(<App />);
-    await screen.findByRole('heading', { name: /new agency account/i });
-    await screen.findByText(/no agency accounts yet/i);
+    await screen.findByRole('heading', { name: /^new account$/i });
+    await screen.findByText(/no agencies yet/i);
 
     fillForm({ fullName: 'New Agency', email: 'taken@agency.com' });
     fireEvent.click(screen.getByRole('button', { name: /create agency account/i }));
@@ -147,19 +333,23 @@ describe('account creation', () => {
   });
 });
 
-describe('dashboard entry point', () => {
+describe('accounts entry point', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ticketsApi.listMyTickets.mockResolvedValue([]);
+    ticketsApi.listAgencyTickets.mockResolvedValue([]);
+    ticketsApi.listEscalatedTickets.mockResolvedValue([]);
+    ticketsApi.listTicketsForAgency.mockResolvedValue([]);
     authApi.listChildAccounts.mockResolvedValue([]);
   });
 
   it('shows the manage link only to roles that can create accounts', async () => {
     for (const [role, expected] of [
-      ['admin', /manage agency accounts/i],
-      ['agency', /manage client accounts/i],
+      ['admin', /manage accounts/i],
+      ['agency', /manage accounts/i],
     ]) {
       authApi.getCurrentUser.mockResolvedValue(user(role));
-      window.history.pushState({}, '', '/dashboard');
+      window.history.pushState({}, '', '/tickets');
       const { unmount } = render(<App />);
 
       expect(await screen.findByRole('link', { name: expected })).toBeInTheDocument();
@@ -167,10 +357,10 @@ describe('dashboard entry point', () => {
     }
 
     authApi.getCurrentUser.mockResolvedValue(user('client'));
-    window.history.pushState({}, '', '/dashboard');
+    window.history.pushState({}, '', '/tickets');
     render(<App />);
 
-    await screen.findByRole('heading', { name: /internal ticket system/i });
+    await screen.findByRole('heading', { level: 1, name: /^tickets$/i });
     expect(screen.queryByRole('link', { name: /manage/i })).not.toBeInTheDocument();
   });
 });

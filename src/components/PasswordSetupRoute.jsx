@@ -19,7 +19,7 @@ export default function PasswordSetupRoute({ children }) {
 
   // Already chosen a password — nothing to do here.
   if (!user.mustChangePassword) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/tickets" replace />;
   }
 
   return children;

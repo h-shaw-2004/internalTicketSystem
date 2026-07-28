@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import * as authApi from '../api/auth';
+import * as ticketsApi from '../api/tickets';
 
 vi.mock('../api/auth', () => ({
   login: vi.fn(),
@@ -13,11 +14,27 @@ vi.mock('../api/auth', () => ({
   AuthError: class AuthError extends Error {},
 }));
 
+vi.mock('../api/tickets', () => ({
+  listMyTickets: vi.fn(),
+  listAgencyTickets: vi.fn(),
+  listEscalatedTickets: vi.fn(),
+  listTicketsForAgency: vi.fn(),
+  getTicket: vi.fn(),
+  createTicket: vi.fn(),
+  updateTicketStatus: vi.fn(),
+  escalateTicket: vi.fn(),
+  TicketError: class TicketError extends Error {},
+}));
+
 describe('session bootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ticketsApi.listMyTickets.mockResolvedValue([]);
+    ticketsApi.listAgencyTickets.mockResolvedValue([]);
+    ticketsApi.listEscalatedTickets.mockResolvedValue([]);
+    ticketsApi.listTicketsForAgency.mockResolvedValue([]);
     authApi.listChildAccounts.mockResolvedValue([]);
-    window.history.pushState({}, '', '/dashboard');
+    window.history.pushState({}, '', '/tickets');
   });
 
   it('shows the login form when there is genuinely no session', async () => {
@@ -58,7 +75,7 @@ describe('session bootstrap', () => {
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
 
     expect(
-      await screen.findByRole('heading', { name: /internal ticket system/i })
+      await screen.findByRole('heading', { level: 1, name: /^tickets$/i })
     ).toBeInTheDocument();
     expect(authApi.getCurrentUser).toHaveBeenCalledTimes(2);
   });

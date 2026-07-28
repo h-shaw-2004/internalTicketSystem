@@ -1,22 +1,75 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { createAccount, listChildAccounts } from '../api/auth';
-import { ROLE_LABELS, creatableRole } from '../../shared/roles.js';
+import {
+  ROLES,
+  ROLE_LABELS,
+  creatableRoles,
+  needsAgencyChoice,
+} from '../../shared/roles.js';
 import AppHeader from '../components/AppHeader';
+import { clickableRow } from '../lib/clickableRow';
 
-const EMPTY_FORM = { fullName: '', email: '' };
+const formatDate = (value) => new Date(value).toLocaleDateString();
+
+function StatusChip({ account }) {
+  return account.mustChangePassword ? (
+    <span className="status status-pending">Password not set</span>
+  ) : (
+    <span className="status status-active">Active</span>
+  );
+}
+
+/** Plain list of accounts of a single kind — no type or parent column needed. */
+function AccountTable({ accounts }) {
+  return (
+    <div className="table-scroll">
+      <table className="account-table">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Email</th>
+            <th scope="col">Status</th>
+            <th scope="col">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {accounts.map((account) => (
+            <tr key={account.id}>
+              <td>{account.fullName}</td>
+              <td>{account.email}</td>
+              <td>
+                <StatusChip account={account} />
+              </td>
+              <td>{formatDate(account.createdAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /**
- * Account management, one level down. The role being created is never a form
- * field — it falls out of who is signed in, so an admin lands on "new agency"
- * and an agency on "new client" without either being able to pick.
+ * Account management.
+ *
+ * An agency creates clients and the role is implied. An admin creates agencies
+ * *or* clients, and a client's parent must be an agency — so making one means
+ * naming which of the admin's agencies it belongs to.
  */
 export default function Accounts() {
   const { user } = useAuth();
-  const targetRole = creatableRole(user.role);
+  const allowedRoles = creatableRoles(user.role);
+  const canChooseRole = allowedRoles.length > 1;
+  const isAdmin = user.role === ROLES.ADMIN;
 
-  const [form, setForm] = useState(EMPTY_FORM);
+  const emptyForm = useMemo(
+    () => ({ fullName: '', email: '', role: allowedRoles[0] ?? '', agencyId: '' }),
+    [allowedRoles]
+  );
+
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState(null);
   // The generated password, held only until the next creation or a reload.
   // Nothing can retrieve it again, so the creator has to pass it on now.
@@ -42,8 +95,30 @@ export default function Accounts() {
     refresh();
   }, [refresh]);
 
+  // One fetch returns both levels for an admin, so the split happens here
+  // rather than in another request.
+  const agencies = accounts.filter((account) => account.role === ROLES.AGENCY);
+  const clientsByAgency = accounts
+    .filter((account) => account.role === ROLES.CLIENT)
+    .reduce((map, client) => {
+      map.set(client.parentId, [...(map.get(client.parentId) ?? []), client]);
+      return map;
+    }, new Map());
+
+  // Which agency's clients are open. Admins only — an agency's list is flat.
+  const [openAgencyId, setOpenAgencyId] = useState(null);
+  const openAgency = agencies.find((agency) => agency.id === openAgencyId) ?? null;
+
+  const mustPickAgency = needsAgencyChoice(user.role, form.role);
+
   const update = (field) => (event) => {
-    setForm((current) => ({ ...current, [field]: event.target.value }));
+    const { value } = event.target;
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+      // Switching away from client drops a stale agency choice.
+      ...(field === 'role' && value !== ROLES.CLIENT ? { agencyId: '' } : {}),
+    }));
     setError(null);
   };
 
@@ -55,8 +130,13 @@ export default function Accounts() {
 
     try {
       const { account, temporaryPassword } = await createAccount(form);
-      setForm(EMPTY_FORM);
+      setForm(emptyForm);
       setIssued({ email: account.email, password: temporaryPassword, role: account.role });
+      // Open the agency a new client landed under, so it is visible immediately
+      // rather than hidden one click away.
+      if (account.role === ROLES.CLIENT && account.parentId) {
+        setOpenAgencyId(account.parentId);
+      }
       await refresh();
     } catch (err) {
       setError({ message: err.message, field: err.field });
@@ -66,7 +146,7 @@ export default function Accounts() {
   }
 
   // The route guard already keeps clients out; this is the belt to its braces.
-  if (!targetRole) {
+  if (allowedRoles.length === 0) {
     return (
       <div className="app-layout">
         <main className="app-main">
@@ -78,22 +158,25 @@ export default function Accounts() {
     );
   }
 
-  const label = ROLE_LABELS[targetRole];
+  const targetLabel = ROLE_LABELS[form.role]?.toLowerCase() ?? 'account';
+  const heading = canChooseRole ? 'New account' : `New ${targetLabel} account`;
+  // Fixed, unlike the form heading — it must not change as the type selector moves.
+  const listHeading = isAdmin ? 'Your agencies' : `Your ${targetLabel} accounts`;
 
   return (
     <div className="app-layout">
       <AppHeader
         title="Accounts"
         action={
-          <Link className="button button-ghost" to="/dashboard">
-            Back to dashboard
+          <Link className="button button-ghost" to="/tickets">
+            Back to tickets
           </Link>
         }
       />
 
       <main className="app-main app-main-stack">
         <section className="panel">
-          <h2>New {label.toLowerCase()} account</h2>
+          <h2>{heading}</h2>
           <p className="muted panel-intro">
             A temporary password is generated for them. They must replace it the first
             time they sign in, so you never learn the password they end up using.
@@ -125,6 +208,58 @@ export default function Accounts() {
               </p>
             )}
 
+            {canChooseRole && (
+              <label className="field" htmlFor="role">
+                <span>Account type</span>
+                <select
+                  id="role"
+                  name="role"
+                  value={form.role}
+                  onChange={update('role')}
+                  aria-invalid={error?.field === 'role' || undefined}
+                  required
+                >
+                  {allowedRoles.map((role) => (
+                    <option key={role} value={role}>
+                      {ROLE_LABELS[role]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {mustPickAgency && (
+              /* The hint sits outside the label and is linked with
+                 aria-describedby — inside, it would become part of the field's
+                 accessible name ("Agency Clients belong to an agency…"). */
+              <div className="field">
+                <label className="field-label" htmlFor="agencyId">
+                  Agency
+                </label>
+                <select
+                  id="agencyId"
+                  name="agencyId"
+                  value={form.agencyId}
+                  onChange={update('agencyId')}
+                  aria-invalid={error?.field === 'agencyId' || undefined}
+                  aria-describedby="agencyId-hint"
+                  required
+                >
+                  <option value="">Select an agency…</option>
+                  {agencies.map((agency) => (
+                    <option key={agency.id} value={agency.id}>
+                      {agency.fullName} ({agency.email})
+                    </option>
+                  ))}
+                </select>
+                <small className="hint" id="agencyId-hint">
+                  {agencies.length === 0
+                    ? 'Create an agency first — a client has to belong to one.'
+                    : 'Clients belong to an agency, not directly to you.'}
+                </small>
+              </div>
+            )}
+
             <label className="field" htmlFor="fullName">
               <span>Full name</span>
               <input
@@ -153,14 +288,18 @@ export default function Accounts() {
               />
             </label>
 
-            <button className="button" type="submit" disabled={submitting}>
-              {submitting ? 'Creating…' : `Create ${label.toLowerCase()} account`}
+            <button
+              className="button"
+              type="submit"
+              disabled={submitting || (mustPickAgency && agencies.length === 0)}
+            >
+              {submitting ? 'Creating…' : `Create ${targetLabel} account`}
             </button>
           </form>
         </section>
 
         <section className="panel">
-          <h2>Your {label.toLowerCase()} accounts</h2>
+          <h2>{listHeading}</h2>
 
           {loading && <p className="muted">Loading…</p>}
 
@@ -171,40 +310,92 @@ export default function Accounts() {
           )}
 
           {!loading && !loadError && accounts.length === 0 && (
-            <p className="muted">No {label.toLowerCase()} accounts yet.</p>
+            <p className="muted">
+              {isAdmin
+                ? 'No agencies yet. Create one above to get started.'
+                : `No ${targetLabel} accounts yet.`}
+            </p>
           )}
 
-          {accounts.length > 0 && (
+          {/*
+           * An admin sees only its agencies here; a client lives under an
+           * agency, so it belongs one level in rather than in the same list. A
+           * flat table would repeat "belongs to <you>" on every agency row and
+           * mix two levels that have an obvious hierarchy.
+           */}
+          {isAdmin && agencies.length > 0 && (
             <div className="table-scroll">
               <table className="account-table">
                 <thead>
                   <tr>
-                    <th scope="col">Name</th>
+                    <th scope="col">Agency</th>
                     <th scope="col">Email</th>
+                    <th scope="col">Clients</th>
                     <th scope="col">Status</th>
                     <th scope="col">Created</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {accounts.map((account) => (
-                    <tr key={account.id}>
-                      <td>{account.fullName}</td>
-                      <td>{account.email}</td>
-                      <td>
-                        {account.mustChangePassword ? (
-                          <span className="status status-pending">Password not set</span>
-                        ) : (
-                          <span className="status status-active">Active</span>
-                        )}
-                      </td>
-                      <td>{new Date(account.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
+                  {agencies.map((agency) => {
+                    const clients = clientsByAgency.get(agency.id) ?? [];
+                    const open = agency.id === openAgencyId;
+
+                    return (
+                      <tr
+                        key={agency.id}
+                        aria-selected={open || undefined}
+                        {...clickableRow(() => setOpenAgencyId(open ? null : agency.id))}
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className="link-button"
+                            aria-expanded={open}
+                            onClick={() => setOpenAgencyId(open ? null : agency.id)}
+                          >
+                            {agency.fullName}
+                          </button>
+                        </td>
+                        <td>{agency.email}</td>
+                        <td>{clients.length}</td>
+                        <td>
+                          <StatusChip account={agency} />
+                        </td>
+                        <td>{formatDate(agency.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
+
+          {!isAdmin && accounts.length > 0 && <AccountTable accounts={accounts} />}
         </section>
+
+        {isAdmin && openAgency && (
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Clients of {openAgency.fullName}</h2>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setOpenAgencyId(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            {(clientsByAgency.get(openAgency.id) ?? []).length === 0 ? (
+              <p className="muted">
+                {openAgency.fullName} has no clients yet. Create one above and assign it to
+                them.
+              </p>
+            ) : (
+              <AccountTable accounts={clientsByAgency.get(openAgency.id)} />
+            )}
+          </section>
+        )}
       </main>
     </div>
   );

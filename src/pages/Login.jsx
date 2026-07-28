@@ -27,7 +27,7 @@ export default function Login() {
       // Returning to the previous page is only correct when the *same* account
       // signs back in; after a switch it drops the new user onto someone else's
       // page, which may not even be theirs to see.
-      navigate('/dashboard', { replace: true });
+      navigate('/tickets', { replace: true });
     } catch (err) {
       setError({ message: err.message, field: err.field });
       setSubmitting(false);

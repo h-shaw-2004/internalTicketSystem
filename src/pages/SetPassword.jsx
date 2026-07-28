@@ -48,7 +48,7 @@ export default function SetPassword() {
       // Reload the session so the guards see must_change_password cleared,
       // otherwise the redirect below bounces straight back here.
       await refresh();
-      navigate('/dashboard', { replace: true });
+      navigate('/tickets', { replace: true });
     } catch (err) {
       setError({ message: err.message, field: err.field });
       setSubmitting(false);

@@ -5,15 +5,18 @@ import GuestRoute from './components/GuestRoute';
 import PasswordSetupRoute from './components/PasswordSetupRoute';
 import { ROLES } from '../shared/roles.js';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import SetPassword from './pages/SetPassword';
 import Tickets from './pages/Tickets';
 import NewTicket from './pages/NewTicket';
 import TicketDetail from './pages/TicketDetail';
 
-// There is no /register route. Accounts are created top-down from /accounts by
-// the account one level above, and admins are seeded via supabase/seed.sql.
+// /tickets is the landing page — there is no dashboard. It was a placeholder
+// that only listed what your role could do, which the ticket views now show
+// directly, so it was one click between signing in and the actual work.
+//
+// There is no /register route either. Accounts are created top-down from
+// /accounts by the account one level above, and admins come from seed.sql.
 export default function App() {
   return (
     <BrowserRouter>
@@ -33,14 +36,6 @@ export default function App() {
               <PasswordSetupRoute>
                 <SetPassword />
               </PasswordSetupRoute>
-            }
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
             }
           />
           <Route
@@ -79,7 +74,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/tickets" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

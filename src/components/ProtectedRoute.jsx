@@ -29,7 +29,7 @@ export default function ProtectedRoute({ requiredRole, children }) {
   }
 
   if (requiredRole && !hasRole(user.role, requiredRole)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/tickets" replace />;
   }
 
   return children;

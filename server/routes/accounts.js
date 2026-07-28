@@ -4,35 +4,68 @@ import { badRequest, forbidden } from '../errors.js';
 import { USER_COLUMNS, requireAuth, toUser } from '../session.js';
 import { hashPassword } from '../../shared/password.js';
 import { generatePassword } from '../../shared/passwordPolicy.js';
-import { creatableRole } from '../../shared/roles.js';
+import { ROLES, canCreateRole, creatableRoles, needsAgencyChoice } from '../../shared/roles.js';
 
 const router = Router();
 
 router.use(requireAuth);
 
-/** The accounts the signed-in user owns, newest first. */
+/**
+ * The accounts the caller manages, newest first.
+ *
+ * An agency sees its own clients. An admin sees its agencies *and* the clients
+ * beneath them — an admin can create a client, but that client's parent is an
+ * agency, so direct children alone would hide it the moment it was made.
+ */
 router.get('/', async (req, res) => {
-  const rows = await many(
-    `select ${USER_COLUMNS} from users where parent_id = $1 order by created_at desc`,
-    [req.user.id]
-  );
+  const { user } = req;
+
+  // Each row already carries parent_id, which is all the client needs to group
+  // clients under their agency — so no join for the parent's name.
+  const rows =
+    user.role === ROLES.ADMIN
+      ? await many(
+          `select ${USER_COLUMNS}
+             from users
+            where parent_id = $1
+               or parent_id in (select id from users where parent_id = $1)
+            order by created_at desc`,
+          [user.id]
+        )
+      : await many(
+          `select ${USER_COLUMNS} from users where parent_id = $1 order by created_at desc`,
+          [user.id]
+        );
 
   res.json({ accounts: rows.map(toUser) });
 });
 
 /**
- * Create the account one level below the caller: an admin creates an agency, an
- * agency creates a client.
+ * Create an account below the caller.
  *
- * The role is derived from the session, never taken from the request body, so
- * there is no field a caller could tamper with to mint an admin. The password is
- * generated here and returned exactly once for the creator to pass on.
+ * `role` is accepted from the body now that an admin has a choice, but it is
+ * checked against creatableRoles — so the widening is "which of my permitted
+ * roles", never "any role". Nothing maps to admin, so no request can mint one.
+ *
+ * The parent is still never taken from the body except for the one case that
+ * needs it: an admin creating a client must name one of *its own* agencies,
+ * because a client's parent has to be an agency.
  */
 router.post('/', async (req, res) => {
   const { user } = req;
+  const allowed = creatableRoles(user.role);
 
-  const role = creatableRole(user.role);
-  if (!role) throw forbidden('Your account type cannot create other accounts.');
+  if (allowed.length === 0) {
+    throw forbidden('Your account type cannot create other accounts.');
+  }
+
+  // With one option the role is implied, which keeps the agency flow unchanged.
+  const role = req.body?.role ?? (allowed.length === 1 ? allowed[0] : null);
+
+  if (!role) throw badRequest('Choose an account type.', 'role');
+  if (!canCreateRole(user.role, role)) {
+    throw forbidden('Your account type cannot create that kind of account.');
+  }
 
   const fullName = String(req.body?.fullName ?? '').trim();
   const email = String(req.body?.email ?? '').trim().toLowerCase();
@@ -41,6 +74,25 @@ router.post('/', async (req, res) => {
   if (!email) throw badRequest('Enter an email address.', 'email');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw badRequest('Enter a valid email address.', 'email');
+  }
+
+  // Who the new account hangs off.
+  let parentId = user.id;
+  let parentRole = user.role;
+
+  if (needsAgencyChoice(user.role, role)) {
+    const agencyId = req.body?.agencyId;
+    if (!agencyId) throw badRequest('Choose an agency for this client.', 'agencyId');
+
+    const agency = await one('select id, role, parent_id from users where id = $1', [agencyId]);
+
+    // Must exist, be an agency, and be one of this admin's own.
+    if (!agency || agency.role !== ROLES.AGENCY || agency.parent_id !== user.id) {
+      throw badRequest('That agency is not one of yours.', 'agencyId');
+    }
+
+    parentId = agency.id;
+    parentRole = ROLES.AGENCY;
   }
 
   const existing = await one('select id from users where lower(email) = $1', [email]);
@@ -55,7 +107,7 @@ router.post('/', async (req, res) => {
       `insert into users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
        values ($1, $2, $3, $4, $5, $6, true)
        returning ${USER_COLUMNS}`,
-      [email, fullName, passwordHash, role, user.id, user.role]
+      [email, fullName, passwordHash, role, parentId, parentRole]
     );
   } catch (error) {
     // The same email was taken between the check above and this insert.

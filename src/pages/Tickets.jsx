@@ -8,11 +8,22 @@ import {
   listMyTickets,
   listTicketsForAgency,
 } from '../api/tickets';
-import { ROLES } from '../../shared/roles.js';
+import { ROLES, canCreateAccounts } from '../../shared/roles.js';
 import useAsync from '../lib/useAsync';
 import AsyncBoundary from '../components/AsyncBoundary';
 import TicketTable from '../components/TicketTable';
+import TicketSummary from '../components/TicketSummary';
 import AppHeader from '../components/AppHeader';
+
+/** Counts plus the table — every list on this page shows both. */
+function TicketResults({ tickets, showClient = false }) {
+  return (
+    <>
+      <TicketSummary tickets={tickets} />
+      <TicketTable tickets={tickets} showClient={showClient} />
+    </>
+  );
+}
 
 function ClientTickets() {
   const task = useCallback(() => listMyTickets(), []);
@@ -36,7 +47,7 @@ function ClientTickets() {
           </p>
         }
       >
-        {(tickets) => <TicketTable tickets={tickets} />}
+        {(tickets) => <TicketResults tickets={tickets} />}
       </AsyncBoundary>
     </section>
   );
@@ -63,7 +74,7 @@ function AgencyTickets() {
           </p>
         }
       >
-        {(tickets) => <TicketTable tickets={tickets} showClient />}
+        {(tickets) => <TicketResults tickets={tickets} showClient />}
       </AsyncBoundary>
     </section>
   );
@@ -73,7 +84,14 @@ function AdminTickets() {
   const escalatedTask = useCallback(() => listEscalatedTickets(), []);
   const escalated = useAsync(escalatedTask);
 
-  const agenciesTask = useCallback(() => listChildAccounts(), []);
+  // GET /accounts returns an admin's agencies *and* the clients beneath them,
+  // so this has to narrow it — otherwise clients show up as pickable agencies.
+  // Filtered inside the task rather than at render, so `empty` still means
+  // "no agencies" rather than "no accounts of any kind".
+  const agenciesTask = useCallback(
+    async () => (await listChildAccounts()).filter((account) => account.role === ROLES.AGENCY),
+    []
+  );
   const agencies = useAsync(agenciesTask);
 
   const [agencyId, setAgencyId] = useState('');
@@ -95,7 +113,7 @@ function AdminTickets() {
           state={escalated}
           empty={<p className="muted">Nothing has been escalated to you. </p>}
         >
-          {(tickets) => <TicketTable tickets={tickets} showClient />}
+          {(tickets) => <TicketResults tickets={tickets} showClient />}
         </AsyncBoundary>
       </section>
 
@@ -136,7 +154,7 @@ function AdminTickets() {
                   state={agencyTickets}
                   empty={<p className="muted">That agency has no tickets yet.</p>}
                 >
-                  {(tickets) => <TicketTable tickets={tickets} showClient />}
+                  {(tickets) => <TicketResults tickets={tickets} showClient />}
                 </AsyncBoundary>
               )}
             </>
@@ -155,9 +173,11 @@ export default function Tickets() {
       <AppHeader
         title="Tickets"
         action={
-          <Link className="button button-ghost" to="/dashboard">
-            Back to dashboard
-          </Link>
+          canCreateAccounts(user.role) && (
+            <Link className="button button-ghost" to="/accounts">
+              Manage accounts
+            </Link>
+          )
         }
       />
 

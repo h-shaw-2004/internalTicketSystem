@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { DEPARTMENT_LABELS, STATUS_LABELS, URGENCY_LABELS } from '../../shared/tickets.js';
+import { clickableRow } from '../lib/clickableRow';
 
 const formatDate = (value) => new Date(value).toLocaleDateString();
 
@@ -8,6 +9,8 @@ const formatDate = (value) => new Date(value).toLocaleDateString();
  * row would name them.
  */
 export default function TicketTable({ tickets, showClient = false }) {
+  const navigate = useNavigate();
+
   return (
     <div className="table-scroll">
       <table className="account-table">
@@ -23,7 +26,7 @@ export default function TicketTable({ tickets, showClient = false }) {
         </thead>
         <tbody>
           {tickets.map((ticket) => (
-            <tr key={ticket.id}>
+            <tr key={ticket.id} {...clickableRow(() => navigate(`/tickets/${ticket.id}`))}>
               <td>
                 <Link to={`/tickets/${ticket.id}`}>{ticket.subject}</Link>
                 {ticket.escalatedAt && (

@@ -91,6 +91,35 @@ describe('client ticket list', () => {
     expect(within(table).getByText('Open')).toBeInTheDocument();
   });
 
+  it('opens a ticket from anywhere on its row, not just the title', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue([ticket()]);
+    ticketsApi.getTicket.mockResolvedValue(ticket());
+
+    render(<App />);
+    const table = await screen.findByRole('table');
+
+    // Click a cell nowhere near the link — the whole bar is the target.
+    fireEvent.click(within(table).getByText('Hardware'));
+
+    expect(await screen.findByRole('heading', { level: 1, name: /^ticket$/i })).toBeInTheDocument();
+    expect(ticketsApi.getTicket).toHaveBeenCalledWith('t1');
+  });
+
+  it('does not double-navigate when the title link itself is clicked', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue([ticket()]);
+    ticketsApi.getTicket.mockResolvedValue(ticket());
+
+    render(<App />);
+    const table = await screen.findByRole('table');
+    fireEvent.click(within(table).getByRole('link', { name: /laptop will not boot/i }));
+
+    await screen.findByRole('heading', { level: 1, name: /^ticket$/i });
+    // The row handler must stand aside for real controls.
+    expect(ticketsApi.getTicket).toHaveBeenCalledTimes(1);
+  });
+
   it('shows an error with a working retry rather than an empty page', async () => {
     signedInAs('client');
     ticketsApi.listMyTickets.mockRejectedValueOnce(new Error('Could not load your tickets.'));
@@ -118,6 +147,34 @@ describe('agency ticket list', () => {
     expect(within(table).getByText('Client Test User')).toBeInTheDocument();
     // Agencies don't raise tickets, so no create affordance.
     expect(screen.queryByRole('link', { name: /raise a ticket/i })).not.toBeInTheDocument();
+  });
+
+  it('summarises the list by status above the table', async () => {
+    signedInAs('agency');
+    ticketsApi.listAgencyTickets.mockResolvedValue([
+      ticket({ id: 't1', status: 'open' }),
+      ticket({ id: 't2', status: 'open' }),
+      ticket({
+        id: 't3',
+        status: 'in_progress',
+        escalatedAt: '2026-07-28T11:00:00.000Z',
+        escalatedTo: 'admin-1',
+      }),
+      ticket({ id: 't4', status: 'resolved' }),
+    ]);
+
+    render(<App />);
+
+    // Scoped — the same status words appear as badges in the table below.
+    const summary = await screen.findByLabelText('Ticket counts');
+    const tile = (label) => within(summary).getByText(label).closest('.summary-tile');
+
+    expect(tile('Open')).toHaveTextContent('2');
+    expect(tile('In Progress')).toHaveTextContent('1');
+    expect(tile('Resolved')).toHaveTextContent('1');
+    // Zero is shown rather than hidden, so the row doesn't reflow as work moves.
+    expect(tile('On Hold')).toHaveTextContent('0');
+    expect(tile('Escalated')).toHaveTextContent('1');
   });
 
   it('flags escalated tickets in the list', async () => {
@@ -164,6 +221,41 @@ describe('admin ticket list', () => {
 
     expect(await screen.findByRole('table')).toBeInTheDocument();
     expect(ticketsApi.listTicketsForAgency).toHaveBeenCalledWith('agency-1');
+  });
+
+  it('lists only agencies in the picker, never the clients beneath them', async () => {
+    signedInAs('admin');
+    // GET /accounts gives an admin both levels; only agencies are pickable.
+    authApi.listChildAccounts.mockResolvedValue([
+      { id: 'agency-1', fullName: 'Agency One', email: 'one@agency.com', role: 'agency' },
+      { id: 'client-9', fullName: 'Client Nine', email: 'nine@client.com', role: 'client' },
+    ]);
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /browse by agency/i });
+
+    const picker = await screen.findByLabelText(/agency/i);
+    const options = within(picker)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+
+    expect(options).toHaveLength(2); // placeholder + the one agency
+    expect(options.join(' ')).toMatch(/Agency One/);
+    expect(options.join(' ')).not.toMatch(/Client Nine/);
+  });
+
+  it('says there are no agencies when the admin only has clients', async () => {
+    signedInAs('admin');
+    authApi.listChildAccounts.mockResolvedValue([
+      { id: 'client-9', fullName: 'Client Nine', email: 'nine@client.com', role: 'client' },
+    ]);
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /browse by agency/i });
+
+    // Empty must mean "no agencies", not "no accounts at all".
+    expect(await screen.findByText(/no agency accounts yet/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/agency/i)).not.toBeInTheDocument();
   });
 
   it('explains an empty escalation queue', async () => {

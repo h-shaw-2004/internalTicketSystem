@@ -9,5 +9,5 @@ export default function GuestRoute({ children }) {
     return <div className="route-status">Loading…</div>;
   }
 
-  return user ? <Navigate to="/dashboard" replace /> : children;
+  return user ? <Navigate to="/tickets" replace /> : children;
 }

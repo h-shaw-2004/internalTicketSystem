@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ROLES, canCreateAccounts, creatableRole, hasRole } from './roles.js';
+import {
+  ROLES,
+  canCreateAccounts,
+  canCreateRole,
+  creatableRoles,
+  hasRole,
+  needsAgencyChoice,
+} from './roles.js';
 
 describe('hasRole', () => {
   it('admits a role at its own level', () => {
@@ -26,23 +33,55 @@ describe('hasRole', () => {
   });
 });
 
-describe('creatableRole', () => {
-  it('steps exactly one level down', () => {
-    expect(creatableRole(ROLES.ADMIN)).toBe(ROLES.AGENCY);
-    expect(creatableRole(ROLES.AGENCY)).toBe(ROLES.CLIENT);
+describe('creatableRoles', () => {
+  it('lets an admin create agencies and clients', () => {
+    expect(creatableRoles(ROLES.ADMIN)).toEqual([ROLES.AGENCY, ROLES.CLIENT]);
+  });
+
+  it('limits an agency to clients', () => {
+    expect(creatableRoles(ROLES.AGENCY)).toEqual([ROLES.CLIENT]);
   });
 
   it('gives clients nothing to create', () => {
-    expect(creatableRole(ROLES.CLIENT)).toBeNull();
+    expect(creatableRoles(ROLES.CLIENT)).toEqual([]);
   });
 
   it('never lets anyone create an admin', () => {
-    expect(Object.values(ROLES).map(creatableRole)).not.toContain(ROLES.ADMIN);
+    for (const role of Object.values(ROLES)) {
+      expect(creatableRoles(role)).not.toContain(ROLES.ADMIN);
+    }
   });
 
   it('refuses unknown or missing roles', () => {
-    expect(creatableRole(undefined)).toBeNull();
-    expect(creatableRole('superuser')).toBeNull();
+    expect(creatableRoles(undefined)).toEqual([]);
+    expect(creatableRoles('superuser')).toEqual([]);
+  });
+});
+
+describe('canCreateRole', () => {
+  it('permits only what creatableRoles lists', () => {
+    expect(canCreateRole(ROLES.ADMIN, ROLES.AGENCY)).toBe(true);
+    expect(canCreateRole(ROLES.ADMIN, ROLES.CLIENT)).toBe(true);
+    expect(canCreateRole(ROLES.AGENCY, ROLES.CLIENT)).toBe(true);
+  });
+
+  it('refuses sideways and upward creation', () => {
+    expect(canCreateRole(ROLES.ADMIN, ROLES.ADMIN)).toBe(false);
+    expect(canCreateRole(ROLES.AGENCY, ROLES.AGENCY)).toBe(false);
+    expect(canCreateRole(ROLES.AGENCY, ROLES.ADMIN)).toBe(false);
+    expect(canCreateRole(ROLES.CLIENT, ROLES.CLIENT)).toBe(false);
+  });
+});
+
+describe('needsAgencyChoice', () => {
+  it('is true only when an admin makes a client', () => {
+    // The agency cannot be inferred from the creator, so it must be named.
+    expect(needsAgencyChoice(ROLES.ADMIN, ROLES.CLIENT)).toBe(true);
+  });
+
+  it('is false when the creator is the parent', () => {
+    expect(needsAgencyChoice(ROLES.ADMIN, ROLES.AGENCY)).toBe(false);
+    expect(needsAgencyChoice(ROLES.AGENCY, ROLES.CLIENT)).toBe(false);
   });
 });
 

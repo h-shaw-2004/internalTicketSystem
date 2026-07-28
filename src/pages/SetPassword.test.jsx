@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import * as authApi from '../api/auth';
+import * as ticketsApi from '../api/tickets';
 
 vi.mock('../api/auth', () => ({
   login: vi.fn(),
@@ -11,6 +12,18 @@ vi.mock('../api/auth', () => ({
   listChildAccounts: vi.fn(),
   setInitialPassword: vi.fn(),
   AuthError: class AuthError extends Error {},
+}));
+
+vi.mock('../api/tickets', () => ({
+  listMyTickets: vi.fn(),
+  listAgencyTickets: vi.fn(),
+  listEscalatedTickets: vi.fn(),
+  listTicketsForAgency: vi.fn(),
+  getTicket: vi.fn(),
+  createTicket: vi.fn(),
+  updateTicketStatus: vi.fn(),
+  escalateTicket: vi.fn(),
+  TicketError: class TicketError extends Error {},
 }));
 
 const user = (overrides = {}) => ({
@@ -30,18 +43,22 @@ const type = (label, value) =>
 describe('forced first-time password change', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ticketsApi.listMyTickets.mockResolvedValue([]);
+    ticketsApi.listAgencyTickets.mockResolvedValue([]);
+    ticketsApi.listEscalatedTickets.mockResolvedValue([]);
+    ticketsApi.listTicketsForAgency.mockResolvedValue([]);
     authApi.listChildAccounts.mockResolvedValue([]);
   });
 
   it('diverts an account that still has its temporary password', async () => {
     authApi.getCurrentUser.mockResolvedValue(user());
     // Heading for anywhere else in the app — the guard should win.
-    window.history.pushState({}, '', '/dashboard');
+    window.history.pushState({}, '', '/tickets');
 
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: /choose a password/i })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /internal ticket system/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: /^tickets$/i })).not.toBeInTheDocument();
   });
 
   it('sends a settled account away from the page', async () => {
@@ -51,7 +68,7 @@ describe('forced first-time password change', () => {
     render(<App />);
 
     expect(
-      await screen.findByRole('heading', { name: /internal ticket system/i })
+      await screen.findByRole('heading', { level: 1, name: /^tickets$/i })
     ).toBeInTheDocument();
   });
 
@@ -138,9 +155,9 @@ describe('forced first-time password change', () => {
     fireEvent.click(screen.getByRole('button', { name: /save password/i }));
 
     expect(authApi.setInitialPassword).toHaveBeenCalledWith({ newPassword: 'Abcdefgh1!' });
-    // Lands on the dashboard rather than bouncing back to the setup page.
+    // Lands on the ticket list rather than bouncing back to the setup page.
     expect(
-      await screen.findByRole('heading', { name: /internal ticket system/i })
+      await screen.findByRole('heading', { level: 1, name: /^tickets$/i })
     ).toBeInTheDocument();
   });
 });
