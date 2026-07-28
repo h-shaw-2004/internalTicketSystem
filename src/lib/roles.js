@@ -23,3 +23,22 @@ export function hasRole(role, required) {
   const needed = RANK[required] ?? 0;
   return held > 0 && held >= needed;
 }
+
+// Account creation runs exactly one level down: an admin creates agencies, an
+// agency creates clients, and a client creates nothing. Admins are not listed
+// as creatable by anyone — they are seeded through the SQL editor, which is the
+// only channel that bypasses RLS.
+const CREATES = {
+  [ROLES.ADMIN]: ROLES.AGENCY,
+  [ROLES.AGENCY]: ROLES.CLIENT,
+};
+
+/** The single role `role` may create, or null if it may not create accounts. */
+export function creatableRole(role) {
+  return CREATES[role] ?? null;
+}
+
+/** True when `role` may create accounts at all. */
+export function canCreateAccounts(role) {
+  return creatableRole(role) !== null;
+}

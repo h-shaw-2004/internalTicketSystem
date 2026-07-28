@@ -1,5 +1,6 @@
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ROLE_LABELS, ROLES, hasRole } from '../lib/roles';
+import { ROLE_LABELS, ROLES, canCreateAccounts, creatableRole, hasRole } from '../lib/roles';
 
 // Placeholder landing page — proves the session and the role hierarchy work.
 // Ticket views replace this next.
@@ -15,9 +16,16 @@ export default function Dashboard() {
             {user.fullName} · <span className="badge">{ROLE_LABELS[user.role]}</span>
           </p>
         </div>
-        <button className="button button-ghost" type="button" onClick={logout}>
-          Sign out
-        </button>
+        <div className="header-actions">
+          {canCreateAccounts(user.role) && (
+            <Link className="button button-ghost" to="/accounts">
+              Manage {ROLE_LABELS[creatableRole(user.role)].toLowerCase()} accounts
+            </Link>
+          )}
+          <button className="button button-ghost" type="button" onClick={logout}>
+            Sign out
+          </button>
+        </div>
       </header>
 
       <main className="app-main">

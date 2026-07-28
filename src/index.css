@@ -9,6 +9,9 @@
   --danger-bg: #ffebe6;
   --danger-border: #ffbdad;
   --danger-text: #bf2600;
+  --success-bg: #e3fcef;
+  --success-border: #abf5d1;
+  --success-text: #006644;
   --radius: 6px;
 
   color-scheme: light;
@@ -83,7 +86,8 @@ h2 {
   gap: 6px;
 }
 
-.field > span {
+.field > span,
+.field-label {
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
@@ -116,14 +120,60 @@ h2 {
   font-size: 12px;
 }
 
-.alert {
+/* Password show/hide toggle, sat inside the input's right edge. */
+.input-with-action {
+  position: relative;
+  display: flex;
+}
+
+.input-with-action input {
+  padding-right: 42px;
+}
+
+.field-action {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  cursor: pointer;
+}
+
+.field-action:hover {
+  color: var(--text);
+}
+
+.field-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.alert,
+.notice {
   margin: 0;
   padding: 10px 12px;
   font-size: 13px;
-  background: var(--danger-bg);
-  border: 1px solid var(--danger-border);
+  border: 1px solid;
   border-radius: var(--radius);
+}
+
+.alert {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
   color: var(--danger-text);
+}
+
+.notice {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success-text);
 }
 
 .button {
@@ -145,6 +195,13 @@ h2 {
 .button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Links styled as buttons need the box behaviour buttons get for free. */
+a.button {
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
 }
 
 .button-ghost {
@@ -172,6 +229,81 @@ h2 {
 
 .auth-switch a:hover {
   text-decoration: underline;
+}
+
+/* A button that reads as a link — used where the action is not navigation. */
+.link-button {
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Password policy checklist ------------------------------------------- */
+
+.policy {
+  display: grid;
+  gap: 6px;
+}
+
+.policy-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.policy-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.policy-list li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.policy-list li.met {
+  color: var(--success-text);
+  font-weight: 600;
+}
+
+/* The met/unmet difference has to survive being read at 12px, so it carries on
+   glyph, colour and weight rather than colour alone. */
+.policy-mark {
+  width: 12px;
+  flex: none;
+  text-align: center;
+  font-weight: 700;
+}
+
+.policy-list li:not(.met) .policy-mark {
+  opacity: 0.5;
 }
 
 .route-status {
@@ -245,4 +377,124 @@ h2 {
 
 .access-list li + li {
   margin-top: 6px;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* --- Account management -------------------------------------------------- */
+
+.app-main-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel-intro {
+  margin: -4px 0 16px;
+  font-size: 13px;
+}
+
+.stack-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 400px;
+}
+
+/* Tables are the one thing here wide enough to push the page sideways on a
+   phone, so they scroll inside their own box rather than the body. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.account-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.account-table th,
+.account-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.account-table th {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.account-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.status {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 10px;
+}
+
+.status-active {
+  color: var(--success-text);
+  background: var(--success-bg);
+}
+
+.status-pending {
+  color: #974f0c;
+  background: #fffae6;
+}
+
+/* --- One-time credential handover ---------------------------------------- */
+
+.credential-callout {
+  display: grid;
+  gap: 10px;
+}
+
+.credential-lead {
+  margin: 0;
+  font-weight: 600;
+}
+
+.credential-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.credential-list dt {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+
+.credential-list dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.credential-list code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  /* Generated passwords have no spaces, so they need an explicit break rule to
+     avoid pushing the callout wider than the panel. */
+  overflow-wrap: anywhere;
+  user-select: all;
 }

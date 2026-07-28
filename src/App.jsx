@@ -2,10 +2,15 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import GuestRoute from './components/GuestRoute';
+import PasswordSetupRoute from './components/PasswordSetupRoute';
+import { ROLES } from './lib/roles';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Accounts from './pages/Accounts';
+import SetPassword from './pages/SetPassword';
 
+// There is no /register route. Accounts are created top-down from /accounts by
+// the account one level above, and admins are seeded via supabase/seed.sql.
 export default function App() {
   return (
     <BrowserRouter>
@@ -20,11 +25,11 @@ export default function App() {
             }
           />
           <Route
-            path="/register"
+            path="/set-password"
             element={
-              <GuestRoute>
-                <Register />
-              </GuestRoute>
+              <PasswordSetupRoute>
+                <SetPassword />
+              </PasswordSetupRoute>
             }
           />
           <Route
@@ -32,6 +37,16 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/accounts"
+            // Agency is the lowest role that can create anything, and the guard
+            // is inclusive upward, so this admits agencies and admins.
+            element={
+              <ProtectedRoute requiredRole={ROLES.AGENCY}>
+                <Accounts />
               </ProtectedRoute>
             }
           />

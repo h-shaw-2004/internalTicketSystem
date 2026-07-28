@@ -20,6 +20,13 @@ export default function ProtectedRoute({ requiredRole, children }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // An account still on its generated password gets nothing else until it picks
+  // one. /set-password is guarded by PasswordSetupRoute instead, so this cannot
+  // bounce against itself.
+  if (user.mustChangePassword) {
+    return <Navigate to="/set-password" replace />;
+  }
+
   if (requiredRole && !hasRole(user.role, requiredRole)) {
     return <Navigate to="/dashboard" replace />;
   }

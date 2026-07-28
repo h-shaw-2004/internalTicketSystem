@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import PasswordField from '../components/PasswordField';
 
 export default function Login() {
   const { login } = useAuth();
@@ -60,26 +61,21 @@ export default function Login() {
           />
         </label>
 
-        <label className="field" htmlFor="password">
-          <span>Password</span>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={form.password}
-            onChange={update('password')}
-            aria-invalid={error?.field === 'password' || undefined}
-            required
-          />
-        </label>
+        <PasswordField
+          id="password"
+          label="Password"
+          autoComplete="current-password"
+          value={form.password}
+          onChange={update('password')}
+          invalid={error?.field === 'password'}
+        />
 
         <button className="button" type="submit" disabled={submitting}>
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
 
         <p className="auth-switch">
-          No account? <Link to="/register">Create one</Link>
+          Accounts are created by your agency or administrator.
         </p>
       </form>
     </div>

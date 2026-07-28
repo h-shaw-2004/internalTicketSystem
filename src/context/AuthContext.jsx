@@ -35,8 +35,11 @@ export function AuthProvider({ children }) {
     return current;
   }, []);
 
-  const register = useCallback(async (details) => {
-    const current = await authApi.register(details);
+  // Re-reads the session when something has changed the stored user underneath
+  // us — setting an initial password clears must_change_password, and the guards
+  // key off that.
+  const refresh = useCallback(async () => {
+    const current = await authApi.getCurrentUser();
     setUser(current);
     return current;
   }, []);
@@ -46,9 +49,11 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // Only session state lives here. Account *creation* does not change who is
+  // signed in, so pages call src/api/auth.js directly for that.
   const value = useMemo(
-    () => ({ user, loading, login, register, logout }),
-    [user, loading, login, register, logout]
+    () => ({ user, loading, login, logout, refresh }),
+    [user, loading, login, logout, refresh]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
