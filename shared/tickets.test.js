@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ROLES } from './roles';
+import { ROLES } from './roles.js';
 import {
   DEPARTMENT_LABELS,
   DEPARTMENT_ORDER,
@@ -14,7 +14,7 @@ import {
   isDepartment,
   isStatus,
   isUrgency,
-} from './tickets';
+} from './tickets.js';
 
 describe('ticket vocabulary', () => {
   it('gives every value a label', () => {

@@ -157,53 +157,30 @@ create index if not exists tickets_agency_id_idx on public.tickets (agency_id);
 create index if not exists tickets_escalated_to_idx on public.tickets (escalated_to);
 create index if not exists tickets_created_at_idx on public.tickets (created_at desc);
 
--- RLS is enabled so nothing is reachable with the anon key by default.
--- The browser client only ever needs the columns exposed by the policies below;
--- once the API server exists it will use the service-role key and bypass these.
+-- --------------------------------------------------------------------------
+-- Row level security
+--
+-- Nothing but the API server in /server touches these tables, and it connects
+-- as the database owner, which RLS does not apply to. So RLS is enabled with
+-- NO policies at all: every other role — including the `anon` key Supabase
+-- publishes — matches no policy and therefore sees nothing.
+--
+-- That is the point of having written the API. Access rules ("an agency sees
+-- only its own clients", "only an admin creates agencies") are expressed once,
+-- in server code, against a session the caller cannot forge. They are no longer
+-- guesses made in a browser that anyone could skip with curl.
+-- --------------------------------------------------------------------------
+
 alter table public.users enable row level security;
 alter table public.sessions enable row level security;
 alter table public.tickets enable row level security;
 
--- INTERIM POLICIES — front-end-only stage.
--- These exist so the React app can talk to the database before the API server
--- is built. Delete every one of them once auth moves server-side.
+-- The front-end-only stage published these to the anon role. They are holes now
+-- that a real API exists, so re-running this file removes them.
 drop policy if exists "interim: anon read users" on public.users;
-create policy "interim: anon read users"
-  on public.users for select to anon using (true);
-
--- Account creation is gated on the *acting* user's role, and at this stage there
--- is no database-level identity to check that against — src/api/auth.js enforces
--- "admin creates agency, agency creates client". All this policy can still do is
--- guarantee no admin is ever mintable from the browser.
 drop policy if exists "interim: anon insert users" on public.users;
-create policy "interim: anon insert users"
-  on public.users for insert to anon with check (role in ('client', 'agency'));
-
--- Needed so a first-time user can replace their temporary password. This is the
--- widest of the interim holes: RLS cannot restrict which columns an update
--- touches, so with the anon key this permits editing any row. Nothing but
--- src/api/auth.js is meant to use it, and it goes with the rest of these.
 drop policy if exists "interim: anon update users" on public.users;
-create policy "interim: anon update users"
-  on public.users for update to anon using (true) with check (true);
-
 drop policy if exists "interim: anon manage sessions" on public.sessions;
-create policy "interim: anon manage sessions"
-  on public.sessions for all to anon using (true) with check (true);
-
--- Who may see and change which ticket is decided entirely by role and hierarchy
--- in src/api/tickets.js. RLS cannot express any of that yet — there is no
--- database-level identity to compare against — so these are wide open like the
--- rest, and go the same way once the API server lands. Delete is withheld
--- because nothing in the app deletes tickets.
 drop policy if exists "interim: anon read tickets" on public.tickets;
-create policy "interim: anon read tickets"
-  on public.tickets for select to anon using (true);
-
 drop policy if exists "interim: anon insert tickets" on public.tickets;
-create policy "interim: anon insert tickets"
-  on public.tickets for insert to anon with check (true);
-
 drop policy if exists "interim: anon update tickets" on public.tickets;
-create policy "interim: anon update tickets"
-  on public.tickets for update to anon using (true) with check (true);

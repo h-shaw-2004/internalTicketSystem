@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_LENGTH, checkPassword, generatePassword } from './passwordPolicy';
+import { MIN_LENGTH, checkPassword, generatePassword } from './passwordPolicy.js';
 
 describe('checkPassword', () => {
   it('accepts a password meeting every rule', () => {

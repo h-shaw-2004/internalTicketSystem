@@ -25,7 +25,7 @@
 
 -- admin1 (admin) — top of the tree
 insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
-values ('admin1@email.com', 'Admin 1 Test User', 'pbkdf2$sha256$210000$PGG+VkkgNZeoNa/HuJ/usQ==$C9z1br97FxC26ukKMgSDJ2kGT+R1esnFSOmDehZMerU=', 'admin', null, null, false)
+values ('admin1@email.com', 'Admin 1 Test User', 'pbkdf2$sha256$210000$e98bvczQQTymCmJsJC69RQ==$WNNVBJGvFqNaNbkDbDBv1g3gj7TrBLO1LdV4SyXcSdQ=', 'admin', null, null, false)
 on conflict (email) do update
   set full_name            = excluded.full_name,
       password_hash        = excluded.password_hash,
@@ -36,7 +36,7 @@ on conflict (email) do update
 
 -- agency1 (agency) — belongs to admin1@email.com
 insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
-select 'agency1@email.com', 'Agency 1 Test User', 'pbkdf2$sha256$210000$IWbBJbOWO6XDEWhKKStlCA==$rBvBOSzfLCTO+rv7V0bcQ/9rI89bZ/Cger3EjD8uEGk=', 'agency', id, 'admin', false
+select 'agency1@email.com', 'Agency 1 Test User', 'pbkdf2$sha256$210000$Oi8a9rkA/lfAGMWmaThbcQ==$23ayTE1Gdj9RbFXJmh6BuGkh07xKDaKiG1e9TAsDjDc=', 'agency', id, 'admin', false
 from public.users
 where email = 'admin1@email.com'
 on conflict (email) do update
@@ -49,7 +49,7 @@ on conflict (email) do update
 
 -- agency2 (agency) — belongs to admin1@email.com
 insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
-select 'agency2@email.com', 'Agency 2 Test User', 'pbkdf2$sha256$210000$cGdKmDpDMUXfW1ZjOZsSJA==$uq8vzlNbWxN00uDelh/XC+is6Vd8oQMsmt103PWo5n8=', 'agency', id, 'admin', false
+select 'agency2@email.com', 'Agency 2 Test User', 'pbkdf2$sha256$210000$zoTFljqKwF8dGjpolgjL7A==$vBZag3Nu/6ehQUdqVZkMLmQZYQwAGmuRVgMGiqxluHo=', 'agency', id, 'admin', false
 from public.users
 where email = 'admin1@email.com'
 on conflict (email) do update
@@ -62,7 +62,7 @@ on conflict (email) do update
 
 -- client1 (client) — belongs to agency1@email.com
 insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
-select 'client1@email.com', 'Client 1 Test User', 'pbkdf2$sha256$210000$wlVzXmc3g3YD1Le9jHSspg==$fyzqcDj3DQyQv5oQ1nrWMdi3cxYY+iiWr9FVJSIV0ks=', 'client', id, 'agency', false
+select 'client1@email.com', 'Client 1 Test User', 'pbkdf2$sha256$210000$Alm9D5DuTPHIfImA9Cunxw==$324yNUZ5NRq5XNliegwASY/iRycotPfN4VSd8kcmFtI=', 'client', id, 'agency', false
 from public.users
 where email = 'agency1@email.com'
 on conflict (email) do update
@@ -75,7 +75,7 @@ on conflict (email) do update
 
 -- client2 (client) — belongs to agency2@email.com
 insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
-select 'client2@email.com', 'Client 2 Test User', 'pbkdf2$sha256$210000$yJKHgTDx6O50klIx4kZpig==$4TaU/C5QjFmxb8ssooNiekVnokvLpbtJ50vGQtdHcQk=', 'client', id, 'agency', false
+select 'client2@email.com', 'Client 2 Test User', 'pbkdf2$sha256$210000$4vQ5/BV6etvYw29BRv+07A==$bHVJv2aCBIbyC4ZmXUH+xC46UZGkCkqfLPPF8WmYvVg=', 'client', id, 'agency', false
 from public.users
 where email = 'agency2@email.com'
 on conflict (email) do update

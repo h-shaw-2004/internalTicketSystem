@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ROLE_LABELS, ROLES, canCreateAccounts, creatableRole, hasRole } from '../lib/roles';
+import { ROLE_LABELS, ROLES, canCreateAccounts, creatableRole, hasRole } from '../../shared/roles.js';
 import AppHeader from '../components/AppHeader';
 
 // Placeholder landing page — proves the session and the role hierarchy work.

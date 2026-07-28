@@ -1,10 +1,28 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import * as authApi from './api/auth';
+
+// The api layer is stubbed so this stays a test of the tree, not of the network.
+vi.mock('./api/auth', () => ({
+  login: vi.fn(),
+  logout: vi.fn(),
+  getCurrentUser: vi.fn(),
+  createAccount: vi.fn(),
+  listChildAccounts: vi.fn(),
+  setInitialPassword: vi.fn(),
+  AuthError: class AuthError extends Error {},
+}));
 
 // Smoke test: a blank page in the browser almost always means the tree threw
 // during render, which this catches without needing a browser open.
 describe('<App />', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authApi.getCurrentUser.mockResolvedValue(null);
+    window.history.pushState({}, '', '/');
+  });
+
   it('sends an unauthenticated visitor to the login form', async () => {
     render(<App />);
 

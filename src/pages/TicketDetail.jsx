@@ -9,7 +9,7 @@ import {
   URGENCY_LABELS,
   canEscalate,
   canManageTickets,
-} from '../lib/tickets';
+} from '../../shared/tickets.js';
 import useAsync from '../lib/useAsync';
 import AsyncBoundary from '../components/AsyncBoundary';
 import AppHeader from '../components/AppHeader';

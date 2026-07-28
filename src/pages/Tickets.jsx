@@ -8,7 +8,7 @@ import {
   listMyTickets,
   listTicketsForAgency,
 } from '../api/tickets';
-import { ROLES } from '../lib/roles';
+import { ROLES } from '../../shared/roles.js';
 import useAsync from '../lib/useAsync';
 import AsyncBoundary from '../components/AsyncBoundary';
 import TicketTable from '../components/TicketTable';

@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { hasRole } from '../lib/roles';
+import { hasRole } from '../../shared/roles.js';
 
 /**
  * Gate a route behind a signed-in session, and optionally a minimum account

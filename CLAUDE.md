@@ -23,9 +23,10 @@ There is no linter or formatter configured — don't invent an `npm run lint`.
 
 ## Setup
 
-1. `cp .env.example .env` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. `src/lib/supabase.js` throws at import time if either is missing, which surfaces as a blank page.
-2. Run `supabase/schema.sql` in the Supabase SQL editor. It is idempotent (`if not exists` throughout, policies dropped before create), so it is safe to re-run after edits.
-3. Run `supabase/seed.sql` in the same editor for the per-role test accounts (below). Also idempotent.
+1. `cp .env.example .env` and set `DATABASE_URL` (Supabase → Project Settings → Database → Connection string → URI). The **server** reads it; nothing reaches the browser. `server/env.js` refuses to boot without it.
+2. Run `supabase/schema.sql` in the Supabase SQL editor. It is idempotent, so it is safe to re-run after edits.
+3. Run `supabase/seed.sql` in the same editor for the test accounts (below). Also idempotent.
+4. `npm run dev` starts **both** the API server (port 3001) and Vite (port 5173) via `concurrently`. `npm run dev:server` / `npm run dev:client` run them separately.
 
 ### Test accounts
 
@@ -55,30 +56,51 @@ There is **no public sign-up**. Agencies are created by an admin and clients by 
 
 Local development only — these passwords are trivially guessable.
 
-Every `VITE_`-prefixed variable is inlined into the browser bundle. Only the publishable/anon key belongs in `.env` — never the `sb_secret_` service-role key.
+**Never add a `VITE_`-prefixed database variable.** Anything `VITE_`-prefixed is inlined into the JavaScript every visitor downloads. The browser has no database credentials at all now, and it must stay that way — it talks to `/api` and nothing else.
 
 ## Architecture
 
-React 18 + Vite SPA. **Supabase is used as a database only** — its own auth stack is explicitly disabled in `src/lib/supabase.js` (`persistSession`, `autoRefreshToken`, `detectSessionInUrl` all false) so it never competes with the sessions this app issues itself.
+Three tiers, in one repo:
+
+```
+src/      React 18 + Vite SPA. Knows only about /api.
+server/   Express API. The only thing with database credentials.
+shared/   Domain logic both tiers import (roles, tickets, password, policy).
+supabase/ schema.sql + generated seed.sql
+```
+
+**Supabase is a hosted Postgres and nothing more.** Its auto-generated PostgREST API is not used, `@supabase/supabase-js` is not a dependency, and the anon key appears nowhere. The server connects with `pg` over `DATABASE_URL` and the SQL is written by hand.
+
+`shared/` exists because both tiers need the same rules — `creatableRole` decides account creation on the server *and* which link the dashboard shows; `checkPassword` drives the live checklist *and* the server's validation. One definition, so they cannot drift. **Node ESM requires file extensions**, so imports of shared modules must be written `../../shared/roles.js`, not `../../shared/roles`.
 
 ### The auth boundary
 
 `src/api/auth.js` is the single place the browser touches credentials or the `users` table. It exports exactly six functions — `login`, `logout`, `getCurrentUser`, `createAccount`, `listChildAccounts`, `setInitialPassword` — plus an `AuthError` carrying an optional `field` for form-level highlighting.
 
 ```
-pages/ + components/  →  context/AuthContext  →  api/auth  →  lib/supabase
+pages/ + components/  →  context/AuthContext  →  api/auth  →  lib/http  →  /api
                       ↘  api/auth (account creation) ↗
 ```
 
 `AuthContext` carries **session state only** (`user`, `loading`, `login`, `logout`). Creating or listing accounts doesn't change who is signed in, so pages call `src/api/auth.js` directly for those rather than routing them through context.
 
-This layering is deliberate. Standing up the real API server means reimplementing `src/api/auth.js` as `fetch` calls and deleting the interim RLS policies in `supabase/schema.sql` — **no other file should need to change**. Preserve that property when adding features: new data access belongs behind a module in `src/api/`, not in a component.
+That layering is what made the move to a real API cheap: only `src/api/auth.js` and `src/api/tickets.js` changed, the signatures stayed identical, and every page, guard and test above them was untouched. Preserve it — new data access belongs behind a module in `src/api/` calling the server, never a `fetch` in a component.
 
-### Current stage is not a security boundary
+`src/lib/http.js` is the only place the browser touches the network. `createClient(ErrorClass)` builds a request function so each API module keeps its own error type while the pages carry on reading `.message` and `.field` exactly as before.
 
-Auth checks run in the browser against the anon key. The interim RLS policies at the bottom of `supabase/schema.sql` grant `anon` broad read on `users`, unrestricted `update` on `users`, and full control of `sessions`, purely so the front end can function before the API server exists. They are labelled `INTERIM` and must all be deleted once auth moves server-side. Treat the current checks as a UX guarantee only — don't put anything sensitive behind them.
+### The server is the security boundary
 
-The `update` policy is the widest hole: RLS cannot restrict *which columns* an update touches, so with the anon key it permits editing any row. It exists only so `setInitialPassword` can work. Nothing else should use it.
+Every access rule is enforced in `server/`, against a session the caller cannot forge. Checks in `src/` are now **UX only** — they decide what to render, never what is permitted. Both layers exist on purpose: hiding a button the user may not press is good UX, and the server refusing it is the actual control.
+
+When you add a rule, it must land in `server/` to be real. A check added only to a page is decoration.
+
+Three habits the routes follow, worth keeping:
+
+- **Identity comes from the session, never the body.** `createAccount` derives the new role from `req.user.role`; `POST /tickets` takes `agency_id` from the client's own `parent_id`. There is no field a caller can tamper with.
+- **Reads and writes share one scoping function.** `loadVisible()` in `server/routes/tickets.js` decides what a role may see, and the status and escalate routes call it before writing, so a write can never reach a ticket a read could not.
+- **Forbidden and missing look identical.** `loadVisible` throws the same 404 either way, so the API cannot be used to confirm another agency's ticket exists.
+
+RLS is enabled on all three tables with **no policies at all**. The server connects as the database owner, which RLS does not apply to; every other role — including the anon key Supabase still publishes — matches no policy and sees nothing.
 
 ### Sessions
 
@@ -131,7 +153,7 @@ Whole-screen failures use `FullPageError` (`title`, `message`, optional `detail`
 Two failure modes are already handled centrally, and both were real bugs — don't undo them:
 
 - **`AuthProvider` keeps `bootstrapError` separate from `user === null`.** A failed session lookup is *not* being signed out. Collapsing them dumps a valid session at `/login` with no explanation and makes every network blip look like an auth bug. The provider renders `FullPageError` with a retry instead of rendering routes.
-- **`src/lib/supabase.js` reports `configError` rather than throwing at import time.** A module-scope throw happens before React mounts, so no error boundary can catch it and the user gets a blank white page. `src/main.jsx` checks the flag and renders a config screen; `ErrorBoundary` wraps the root for render-time throws. `src/lib/supabase.test.js` asserts importing unconfigured does not throw.
+- **`ErrorBoundary` wraps the root** in `src/main.jsx`, so a render-time throw shows a real screen instead of a blank white page. (The browser no longer has any configuration to get wrong — that check moved to `server/env.js`, which fails at boot with a message naming the fix.)
 
 **Still deferred:** skeleton rows for tables — loading is plain text today — and a retro-fit of the `Accounts` list onto `useAsync`, since its three branches are hand-rolled with no retry and thin empty copy. The three route guards also duplicate the same `route-status` markup and should collapse into a shared component.
 
@@ -206,7 +228,9 @@ Vitest with jsdom; config lives in the `test` block of `vite.config.js`, not a s
 
 `src/App.test.jsx` is a smoke test: it renders the full tree and asserts the login form appears. A blank page in the browser is nearly always a render-time throw, and this catches it without opening a browser.
 
-Page-level tests mock `../api/auth` wholesale and drive the real `<App />`, setting the starting route with `window.history.pushState` before `render`. That exercises the actual guards and routing rather than a component in isolation, and keeps the tests off Supabase entirely — the `src/api/` boundary is what makes a one-module mock sufficient.
+Page-level tests mock `../api/auth` (and `../api/tickets`) wholesale and drive the real `<App />`, setting the starting route with `window.history.pushState` before `render`. That exercises the actual guards and routing rather than a component in isolation, and keeps the tests off the network — the `src/api/` boundary is what makes a one-module mock sufficient. **Every test file rendering `<App />` must mock the api modules**, including the smoke test; without it `getCurrentUser` makes a real request and `AuthProvider` renders its error screen.
+
+The 72 frontend tests cover the React tier. **The `server/` routes have no automated tests yet** — the highest-value gap in the project.
 
 `Accounts` loads its list in an effect, so tests must await the load settling (`await screen.findByText(/no … accounts yet/i)`) before asserting, or React emits `act()` warnings that bury real failures.
 
@@ -214,4 +238,6 @@ Query the login password box as `getByLabelText('Password')`, exactly. `Password
 
 ## Environment note
 
-Node here is v18.2.0. `iceberg-js`, a transitive dependency of `@supabase/supabase-js` → `@supabase/storage-js`, declares `node >=20` and warns on install. Tests and builds pass regardless; if Supabase **storage** calls misbehave, upgrading Node is the fix.
+Node here is v18.2.0, which has `globalThis.crypto.subtle` — so `shared/password.js` runs unchanged on the server, verified directly. The polyfill in `src/test/setup.js` is for **jsdom**, which ships `getRandomValues` but not `SubtleCrypto`; it is not a Node gap. `scripts/generate-seed.mjs` guards defensively for older Node but is a no-op here.
+
+`node --watch` does not exist before Node 18.11, which is why `nodemon` runs the dev server.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ROLES, canCreateAccounts, creatableRole, hasRole } from './roles';
+import { ROLES, canCreateAccounts, creatableRole, hasRole } from './roles.js';
 
 describe('hasRole', () => {
   it('admits a role at its own level', () => {

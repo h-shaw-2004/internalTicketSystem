@@ -9,7 +9,7 @@ import {
   URGENCY_LABELS,
   URGENCY_ORDER,
   canCreateTickets,
-} from '../lib/tickets';
+} from '../../shared/tickets.js';
 import AppHeader from '../components/AppHeader';
 
 const EMPTY_FORM = {

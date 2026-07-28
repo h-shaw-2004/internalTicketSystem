@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { setInitialPassword } from '../api/auth';
-import { checkPassword } from '../lib/passwordPolicy';
+import { checkPassword } from '../../shared/passwordPolicy.js';
 import PasswordField from '../components/PasswordField';
 
 /**

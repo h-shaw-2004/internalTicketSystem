@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { DEPARTMENT_LABELS, STATUS_LABELS, URGENCY_LABELS } from '../lib/tickets';
+import { DEPARTMENT_LABELS, STATUS_LABELS, URGENCY_LABELS } from '../../shared/tickets.js';
 
 const formatDate = (value) => new Date(value).toLocaleDateString();
 

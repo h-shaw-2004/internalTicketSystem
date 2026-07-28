@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { createAccount, listChildAccounts } from '../api/auth';
-import { ROLE_LABELS, creatableRole } from '../lib/roles';
+import { ROLE_LABELS, creatableRole } from '../../shared/roles.js';
 import AppHeader from '../components/AppHeader';
 
 const EMPTY_FORM = { fullName: '', email: '' };

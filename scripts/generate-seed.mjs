@@ -2,7 +2,7 @@
 // Regenerates supabase/seed.sql — the fixed test accounts, one per role, wired
 // into the hierarchy: admin => agency => client.
 //
-// Passwords are stored in the PBKDF2 format defined by src/lib/password.js, and
+// Passwords are stored in the PBKDF2 format defined by shared/password.js, and
 // Postgres cannot produce that format (pgcrypto has no PBKDF2), so the hashes
 // have to be computed here and baked into the SQL as literals. This works
 // because password.js is built on the Web Crypto API, which Node exposes with
@@ -27,8 +27,8 @@ if (!globalThis.crypto?.subtle) {
 }
 
 // Imported after the polyfill so hashPassword has crypto.subtle available.
-const { hashPassword } = await import('../src/lib/password.js');
-const { checkPassword } = await import('../src/lib/passwordPolicy.js');
+const { hashPassword } = await import('../shared/password.js');
+const { checkPassword } = await import('../shared/passwordPolicy.js');
 
 // Two branches under one admin, so the admin's "browse by agency" picker has
 // something to pick between and each agency can only see its own client.

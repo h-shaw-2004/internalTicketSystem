@@ -1,5 +1,5 @@
 import { useAuth } from '../context/AuthContext';
-import { ROLE_LABELS } from '../lib/roles';
+import { ROLE_LABELS } from '../../shared/roles.js';
 
 /**
  * The signed-in page header: title, who you are, page-specific actions, sign

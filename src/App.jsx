@@ -3,7 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import GuestRoute from './components/GuestRoute';
 import PasswordSetupRoute from './components/PasswordSetupRoute';
-import { ROLES } from './lib/roles';
+import { ROLES } from '../shared/roles.js';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';

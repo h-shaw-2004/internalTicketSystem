@@ -4,7 +4,7 @@
 // Changing a value means an `alter type ... add value` migration, so treat these
 // as fixed; the labels beside them are the only part meant to be reworded.
 
-import { ROLES } from './roles';
+import { ROLES } from './roles.js';
 
 export const TICKET_STATUSES = {
   OPEN: 'open',
