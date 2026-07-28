@@ -13,6 +13,48 @@ vi.mock('../api/auth', () => ({
   AuthError: class AuthError extends Error {},
 }));
 
+describe('where signing in lands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authApi.getCurrentUser.mockResolvedValue(null);
+    authApi.listChildAccounts.mockResolvedValue([]);
+  });
+
+  it('goes to the dashboard even when bounced off a deep link', async () => {
+    // Arriving at a protected page signed out is what used to stash a "return
+    // to" location and drop the next account onto someone else's page.
+    window.history.pushState({}, '', '/tickets');
+
+    render(<App />);
+    await screen.findByRole('heading', { name: /sign in/i });
+
+    const signedIn = {
+      id: 'admin-1',
+      email: 'admin1@email.com',
+      fullName: 'Admin 1 Test User',
+      role: 'admin',
+      parentId: null,
+      mustChangePassword: false,
+      createdAt: '2026-07-28T09:00:00.000Z',
+    };
+    authApi.login.mockResolvedValue(signedIn);
+    authApi.getCurrentUser.mockResolvedValue(signedIn);
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: 'admin1@email.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'admin1Password?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    expect(
+      await screen.findByRole('heading', { name: /internal ticket system/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^tickets$/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('password visibility toggle', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -1,4 +1,4 @@
--- Internal Ticket System — test accounts, one per role.
+-- Internal Ticket System — test accounts.
 -- GENERATED FILE — edit scripts/generate-seed.mjs and run `npm run seed`.
 --
 -- Run this in the Supabase SQL editor AFTER schema.sql. The editor runs as the
@@ -7,21 +7,25 @@
 -- first admin has to come from here.
 --
 -- Hierarchy created:
---   admin@email.com
---     └── agency@email.com
---           └── client@email.com
+--   admin1@email.com
+--   ├── agency1@email.com
+--   │   └── client1@email.com
+--   └── agency2@email.com
+--       └── client2@email.com
 --
 -- Credentials (local development only — these passwords are trivially
 -- guessable, never run this against anything real):
---   admin  admin@email.com      admin0Password?
---   agency agency@email.com     agency0Password?
---   client client@email.com     client0Password?
+--   admin  admin1@email.com     admin1Password?
+--   agency agency1@email.com    agency1Password?
+--   agency agency2@email.com    agency2Password?
+--   client client1@email.com    client1Password?
+--   client client2@email.com    client2Password?
 --
 -- Safe to re-run: existing rows are reset to these values rather than duplicated.
 
--- admin — top of the tree
+-- admin1 (admin) — top of the tree
 insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
-values ('admin@email.com', 'Admin Test User', 'pbkdf2$sha256$210000$gR2lWITx7vUThMHJziB4dQ==$NO+SfnkJCJf/zLf8VjNDU9llx23xmqIKeJm1m9x99D4=', 'admin', null, null, false)
+values ('admin1@email.com', 'Admin 1 Test User', 'pbkdf2$sha256$210000$PGG+VkkgNZeoNa/HuJ/usQ==$C9z1br97FxC26ukKMgSDJ2kGT+R1esnFSOmDehZMerU=', 'admin', null, null, false)
 on conflict (email) do update
   set full_name            = excluded.full_name,
       password_hash        = excluded.password_hash,
@@ -30,11 +34,11 @@ on conflict (email) do update
       parent_role          = excluded.parent_role,
       must_change_password = excluded.must_change_password;
 
--- agency — belongs to admin@email.com
+-- agency1 (agency) — belongs to admin1@email.com
 insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
-select 'agency@email.com', 'Agency Test User', 'pbkdf2$sha256$210000$DT5r/LvNuygUb4lkm682/w==$FXw4j7AI5qIudcRHnG/CLIB3haPNWQ6y000KRO6/bQM=', 'agency', id, 'admin', false
+select 'agency1@email.com', 'Agency 1 Test User', 'pbkdf2$sha256$210000$IWbBJbOWO6XDEWhKKStlCA==$rBvBOSzfLCTO+rv7V0bcQ/9rI89bZ/Cger3EjD8uEGk=', 'agency', id, 'admin', false
 from public.users
-where email = 'admin@email.com'
+where email = 'admin1@email.com'
 on conflict (email) do update
   set full_name            = excluded.full_name,
       password_hash        = excluded.password_hash,
@@ -43,11 +47,37 @@ on conflict (email) do update
       parent_role          = excluded.parent_role,
       must_change_password = excluded.must_change_password;
 
--- client — belongs to agency@email.com
+-- agency2 (agency) — belongs to admin1@email.com
 insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
-select 'client@email.com', 'Client Test User', 'pbkdf2$sha256$210000$BXZPn7QiQ8RA5h4aDcINng==$SS4OTInpMtKxWOIF7L40SpC8cfyWPHGiFbV4w0DuPcI=', 'client', id, 'agency', false
+select 'agency2@email.com', 'Agency 2 Test User', 'pbkdf2$sha256$210000$cGdKmDpDMUXfW1ZjOZsSJA==$uq8vzlNbWxN00uDelh/XC+is6Vd8oQMsmt103PWo5n8=', 'agency', id, 'admin', false
 from public.users
-where email = 'agency@email.com'
+where email = 'admin1@email.com'
+on conflict (email) do update
+  set full_name            = excluded.full_name,
+      password_hash        = excluded.password_hash,
+      role                 = excluded.role,
+      parent_id            = excluded.parent_id,
+      parent_role          = excluded.parent_role,
+      must_change_password = excluded.must_change_password;
+
+-- client1 (client) — belongs to agency1@email.com
+insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
+select 'client1@email.com', 'Client 1 Test User', 'pbkdf2$sha256$210000$wlVzXmc3g3YD1Le9jHSspg==$fyzqcDj3DQyQv5oQ1nrWMdi3cxYY+iiWr9FVJSIV0ks=', 'client', id, 'agency', false
+from public.users
+where email = 'agency1@email.com'
+on conflict (email) do update
+  set full_name            = excluded.full_name,
+      password_hash        = excluded.password_hash,
+      role                 = excluded.role,
+      parent_id            = excluded.parent_id,
+      parent_role          = excluded.parent_role,
+      must_change_password = excluded.must_change_password;
+
+-- client2 (client) — belongs to agency2@email.com
+insert into public.users (email, full_name, password_hash, role, parent_id, parent_role, must_change_password)
+select 'client2@email.com', 'Client 2 Test User', 'pbkdf2$sha256$210000$yJKHgTDx6O50klIx4kZpig==$4TaU/C5QjFmxb8ssooNiekVnokvLpbtJ50vGQtdHcQk=', 'client', id, 'agency', false
+from public.users
+where email = 'agency2@email.com'
 on conflict (email) do update
   set full_name            = excluded.full_name,
       password_hash        = excluded.password_hash,
@@ -59,4 +89,4 @@ on conflict (email) do update
 -- Drop any sessions these accounts already held, so a re-seed forces a fresh
 -- sign-in rather than leaving a stale token pointing at the old row.
 delete from public.sessions
-where user_id in (select id from public.users where email in ('admin@email.com', 'agency@email.com', 'client@email.com'));
+where user_id in (select id from public.users where email in ('admin1@email.com', 'agency1@email.com', 'agency2@email.com', 'client1@email.com', 'client2@email.com'));

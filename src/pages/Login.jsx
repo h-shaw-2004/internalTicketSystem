@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PasswordField from '../components/PasswordField';
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState(null);
@@ -24,9 +23,11 @@ export default function Login() {
 
     try {
       await login(form);
-      // Send them back to whatever they were trying to reach.
-      const destination = location.state?.from?.pathname ?? '/dashboard';
-      navigate(destination, { replace: true });
+      // Always the dashboard, never wherever the browser happened to be.
+      // Returning to the previous page is only correct when the *same* account
+      // signs back in; after a switch it drops the new user onto someone else's
+      // page, which may not even be theirs to see.
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       setError({ message: err.message, field: err.field });
       setSubmitting(false);

@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasRole } from '../lib/roles';
 
@@ -9,15 +9,16 @@ import { hasRole } from '../lib/roles';
  */
 export default function ProtectedRoute({ requiredRole, children }) {
   const { user, loading } = useAuth();
-  const location = useLocation();
 
   if (loading) {
     return <div className="route-status">Loading…</div>;
   }
 
   if (!user) {
-    // Remember where they were headed so login can send them back.
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    // Deliberately carries no "return to" location. Signing in always lands on
+    // the dashboard, because the next person through this form is often a
+    // different account than the one that was bounced.
+    return <Navigate to="/login" replace />;
   }
 
   // An account still on its generated password gets nothing else until it picks

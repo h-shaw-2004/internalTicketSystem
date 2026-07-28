@@ -30,33 +30,77 @@ if (!globalThis.crypto?.subtle) {
 const { hashPassword } = await import('../src/lib/password.js');
 const { checkPassword } = await import('../src/lib/passwordPolicy.js');
 
+// Two branches under one admin, so the admin's "browse by agency" picker has
+// something to pick between and each agency can only see its own client.
+//
+//   admin1
+//     ├── agency1 ── client1
+//     └── agency2 ── client2
+//
 // Parent-first order matters: each row's parent must already exist when it is
-// inserted, and the users_parent_fkey constraint enforces that.
+// inserted, and users_parent_fkey enforces that.
 const HIERARCHY = [
-  { role: 'admin', parentRole: null },
-  { role: 'agency', parentRole: 'admin' },
-  { role: 'client', parentRole: 'agency' },
+  { key: 'admin1', role: 'admin', parentKey: null },
+  { key: 'agency1', role: 'agency', parentKey: 'admin1' },
+  { key: 'agency2', role: 'agency', parentKey: 'admin1' },
+  { key: 'client1', role: 'client', parentKey: 'agency1' },
+  { key: 'client2', role: 'client', parentKey: 'agency2' },
 ];
 
-// Convention, per role: <role>@email.com / <role>0Password?
-// The shape is deliberate — it satisfies every rule in PASSWORD_RULES, so the
-// seeded logins would still be accepted if they ever went through the policy.
-const accounts = HIERARCHY.map(({ role, parentRole }) => ({
+const roleOf = (key) => HIERARCHY.find((entry) => entry.key === key)?.role ?? null;
+
+// "agency2" -> "Agency 2", for display names.
+const titleCase = (key) =>
+  key.replace(/^(.)/, (c) => c.toUpperCase()).replace(/(\d+)$/, ' $1');
+
+// Convention, per account: <key>@email.com / <key>Password?
+// The digit in the key is what satisfies the policy's number rule, so the
+// password carries the same number as the name.
+const accounts = HIERARCHY.map(({ key, role, parentKey }) => ({
+  key,
   role,
-  parentRole,
-  email: `${role}@email.com`,
-  password: `${role}0Password?`,
-  fullName: `${role[0].toUpperCase()}${role.slice(1)} Test User`,
-  parentEmail: parentRole ? `${parentRole}@email.com` : null,
+  parentKey,
+  parentRole: parentKey ? roleOf(parentKey) : null,
+  email: `${key}@email.com`,
+  password: `${key}Password?`,
+  fullName: `${titleCase(key)} Test User`,
+  parentEmail: parentKey ? `${parentKey}@email.com` : null,
 }));
+
+/** Indented tree for the file header, built from HIERARCHY so it cannot go stale. */
+function treeLines() {
+  const children = new Map();
+  for (const account of accounts) {
+    const parent = account.parentKey ?? '__root';
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(account);
+  }
+
+  const lines = [];
+  const walk = (key, prefix) => {
+    const kids = children.get(key) ?? [];
+    kids.forEach((child, index) => {
+      const last = index === kids.length - 1;
+      lines.push(`${prefix}${last ? '└── ' : '├── '}${child.email}`);
+      walk(child.key, `${prefix}${last ? '    ' : '│   '}`);
+    });
+  };
+
+  for (const root of children.get('__root') ?? []) {
+    lines.push(root.email);
+    walk(root.key, '');
+  }
+
+  return lines;
+}
 
 // Fails the build rather than emitting a seed that contradicts the policy the
 // rest of the app enforces.
-for (const { role, password } of accounts) {
+for (const { key, password } of accounts) {
   const { valid, results } = checkPassword(password);
   if (!valid) {
     const failed = results.filter((r) => !r.met).map((r) => r.label);
-    throw new Error(`Seed password for ${role} breaks the policy: ${failed.join(', ')}`);
+    throw new Error(`Seed password for ${key} breaks the policy: ${failed.join(', ')}`);
   }
 }
 
@@ -81,7 +125,9 @@ const MUST_CHANGE = 'false';
 
 async function statement(a) {
   const hash = await hashPassword(a.password);
-  const head = `-- ${a.role}${a.parentEmail ? ` — belongs to ${a.parentEmail}` : ' — top of the tree'}
+  const head = `-- ${a.key} (${a.role})${
+    a.parentEmail ? ` — belongs to ${a.parentEmail}` : ' — top of the tree'
+  }
 insert into public.users ${COLUMNS}`;
 
   if (!a.parentEmail) {
@@ -106,7 +152,7 @@ for (const a of accounts) {
 
 const emailList = accounts.map((a) => quote(a.email)).join(', ');
 
-const sql = `-- Internal Ticket System — test accounts, one per role.
+const sql = `-- Internal Ticket System — test accounts.
 -- GENERATED FILE — edit scripts/generate-seed.mjs and run \`npm run seed\`.
 --
 -- Run this in the Supabase SQL editor AFTER schema.sql. The editor runs as the
@@ -115,13 +161,15 @@ const sql = `-- Internal Ticket System — test accounts, one per role.
 -- first admin has to come from here.
 --
 -- Hierarchy created:
---   admin@email.com
---     └── agency@email.com
---           └── client@email.com
+${treeLines()
+  .map((line) => `--   ${line}`)
+  .join('\n')}
 --
 -- Credentials (local development only — these passwords are trivially
 -- guessable, never run this against anything real):
-${accounts.map((a) => `--   ${a.role.padEnd(6)} ${a.email.padEnd(20)} ${a.password}`).join('\n')}
+${accounts
+  .map((a) => `--   ${a.role.padEnd(6)} ${a.email.padEnd(20)} ${a.password}`)
+  .join('\n')}
 --
 -- Safe to re-run: existing rows are reset to these values rather than duplicated.
 
@@ -143,6 +191,6 @@ const outPath = path.join(
 await writeFile(outPath, sql, 'utf8');
 console.log(`Wrote ${path.relative(process.cwd(), outPath)}`);
 for (const a of accounts) {
-  const under = a.parentEmail ? ` (under ${a.parentEmail})` : '';
-  console.log(`  ${a.role.padEnd(6)} ${a.email.padEnd(20)} ${a.password}${under}`);
+  const under = a.parentEmail ? ` under ${a.parentEmail}` : '';
+  console.log(`  ${a.role.padEnd(6)} ${a.email.padEnd(20)} ${a.password.padEnd(18)}${under}`);
 }

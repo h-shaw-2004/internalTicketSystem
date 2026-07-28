@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { createAccount, listChildAccounts } from '../api/auth';
 import { ROLE_LABELS, creatableRole } from '../lib/roles';
+import AppHeader from '../components/AppHeader';
 
 const EMPTY_FORM = { fullName: '', email: '' };
 
@@ -81,17 +82,14 @@ export default function Accounts() {
 
   return (
     <div className="app-layout">
-      <header className="app-header">
-        <div>
-          <h1>Accounts</h1>
-          <p className="muted">
-            {user.fullName} · <span className="badge">{ROLE_LABELS[user.role]}</span>
-          </p>
-        </div>
-        <Link className="button button-ghost" to="/dashboard">
-          Back to dashboard
-        </Link>
-      </header>
+      <AppHeader
+        title="Accounts"
+        action={
+          <Link className="button button-ghost" to="/dashboard">
+            Back to dashboard
+          </Link>
+        }
+      />
 
       <main className="app-main app-main-stack">
         <section className="panel">

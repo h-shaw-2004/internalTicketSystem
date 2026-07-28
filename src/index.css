@@ -313,6 +313,30 @@ a.button {
   color: var(--muted);
 }
 
+/* --- Whole-screen failure states ----------------------------------------- */
+
+.error-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.error-detail {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius);
+  /* Messages are long and unwrapped, so they scroll inside the card rather than
+     widening it. */
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* --- Signed-in shell ----------------------------------------------------- */
 
 .app-layout {
@@ -456,6 +480,173 @@ a.button {
 .status-pending {
   color: #974f0c;
   background: #fffae6;
+}
+
+/* --- Tickets -------------------------------------------------------------- */
+
+.status-open {
+  color: #0747a6;
+  background: #deebff;
+}
+
+.status-in-progress {
+  color: #5243aa;
+  background: #eae6ff;
+}
+
+.status-with-client {
+  color: #974f0c;
+  background: #fffae6;
+}
+
+.status-on-hold {
+  color: var(--muted);
+  background: #ebecf0;
+}
+
+.status-resolved {
+  color: var(--success-text);
+  background: var(--success-bg);
+}
+
+.urgency {
+  font-weight: 600;
+}
+
+.urgency-low {
+  color: var(--muted);
+}
+
+.urgency-medium {
+  color: var(--text);
+}
+
+.urgency-high {
+  color: #974f0c;
+}
+
+.urgency-critical {
+  color: var(--danger-text);
+}
+
+.badge-escalated {
+  margin-left: 8px;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.panel-head h2 {
+  margin-bottom: 0;
+}
+
+.field-inline {
+  max-width: 360px;
+}
+
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 9px 12px;
+  font: inherit;
+  color: inherit;
+  background: #fafbfc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(0 82 204 / 0.2);
+}
+
+.field select[aria-invalid='true'],
+.field textarea[aria-invalid='true'] {
+  border-color: var(--danger-border);
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.action-row + .action-row {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.action-row-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.detail-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 14px;
+}
+
+.detail-grid dt {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.detail-grid dd {
+  margin: 0;
+}
+
+.detail-subhead {
+  margin: 20px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.detail-description {
+  margin: 0;
+  /* Descriptions are typed into a textarea, so newlines are meaningful. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- Async list states ---------------------------------------------------- */
+
+.async-loading {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.async-error {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
 }
 
 /* --- One-time credential handover ---------------------------------------- */

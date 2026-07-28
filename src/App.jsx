@@ -8,6 +8,9 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import SetPassword from './pages/SetPassword';
+import Tickets from './pages/Tickets';
+import NewTicket from './pages/NewTicket';
+import TicketDetail from './pages/TicketDetail';
 
 // There is no /register route. Accounts are created top-down from /accounts by
 // the account one level above, and admins are seeded via supabase/seed.sql.
@@ -47,6 +50,32 @@ export default function App() {
             element={
               <ProtectedRoute requiredRole={ROLES.AGENCY}>
                 <Accounts />
+              </ProtectedRoute>
+            }
+          />
+          {/* Every role has a tickets view — which one is decided inside the
+              page, since the three differ in content rather than access. */}
+          <Route
+            path="/tickets"
+            element={
+              <ProtectedRoute>
+                <Tickets />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tickets/new"
+            element={
+              <ProtectedRoute>
+                <NewTicket />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tickets/:id"
+            element={
+              <ProtectedRoute>
+                <TicketDetail />
               </ProtectedRoute>
             }
           />

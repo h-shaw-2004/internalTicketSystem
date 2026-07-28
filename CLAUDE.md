@@ -29,13 +29,25 @@ There is no linter or formatter configured — don't invent an `npm run lint`.
 
 ### Test accounts
 
+```
+admin1@email.com
+├── agency1@email.com
+│   └── client1@email.com
+└── agency2@email.com
+    └── client2@email.com
+```
+
 | Role | Email | Password | Parent |
 |---|---|---|---|
-| admin | `admin@email.com` | `admin0Password?` | — |
-| agency | `agency@email.com` | `agency0Password?` | `admin@email.com` |
-| client | `client@email.com` | `client0Password?` | `agency@email.com` |
+| admin | `admin1@email.com` | `admin1Password?` | — |
+| agency | `agency1@email.com` | `agency1Password?` | `admin1@email.com` |
+| agency | `agency2@email.com` | `agency2Password?` | `admin1@email.com` |
+| client | `client1@email.com` | `client1Password?` | `agency1@email.com` |
+| client | `client2@email.com` | `client2Password?` | `agency2@email.com` |
 
-The `<role>0Password?` shape satisfies every rule in `PASSWORD_RULES`. `scripts/generate-seed.mjs` runs `checkPassword` over each one and throws rather than emitting a seed that contradicts the policy the app enforces.
+Two branches on purpose: the admin's "browse by agency" picker needs something to pick between, and one agency must not be able to see the other's client or their tickets.
+
+The `<name>Password?` shape satisfies every rule in `PASSWORD_RULES` — the digit in the account name is what meets the number requirement, so the password always carries the same number as the email. `scripts/generate-seed.mjs` runs `checkPassword` over each one and throws rather than emitting a seed that contradicts the policy the app enforces.
 
 There is **no public sign-up**. Agencies are created by an admin and clients by an agency, so the first admin has to come from the SQL editor — that is the only channel that bypasses RLS, and the insert policy refuses `role = 'admin'` from the browser outright.
 
@@ -73,6 +85,55 @@ The `update` policy is the widest hole: RLS cannot restrict *which columns* an u
 Opaque 32-byte random hex token, stored in `localStorage` under `its.session` and in the `sessions` table with an 8-hour TTL. `getCurrentUser` resolves the token via a join and clears it on expiry or lookup failure. There is no refresh — sessions simply expire.
 
 **Only `login` creates a session.** `createAccount` deliberately does not — the creator stays signed in as themselves, and the new account signs in later with the password it was given.
+
+### Tickets
+
+Raised by a client, worked by that client's agency, escalated to the agency's admin when the agency can't resolve it.
+
+`src/api/tickets.js` is the only place the browser touches the `tickets` table — same boundary rule as `auth.js`. Every function re-resolves the actor from the session rather than trusting a caller-supplied id, and scopes reads and writes to what that actor may see.
+
+`src/lib/tickets.js` holds the vocabulary and the permission predicates. **Its enum values mirror the Postgres types exactly** — changing a value needs an `alter type … add value` migration, so treat them as fixed and reword only the labels.
+
+- Status: `open`, `in_progress`, `with_client`, `on_hold`, `resolved`. Any status can move to any other; `STATUS_ORDER` is display order, not a state machine.
+- Department: `hardware`, `software`, `network`, `access`, `other`.
+- Urgency: `low`, `medium`, `high`, `critical`.
+
+**Who sees what:**
+
+| Role | Sees | Can do |
+|---|---|---|
+| client | tickets they raised | raise tickets |
+| agency | tickets from their clients (`agency_id = self`) | change status, escalate once |
+| admin | escalated queue (`escalated_to = self`), plus browse-by-agency | change status |
+
+`tickets.agency_id` is copied from the client's parent at creation rather than joined through on read, so moving a client to a different agency leaves historical tickets with the agency that actually handled them.
+
+**Escalation is a request for help, not a handover.** After escalating, the agency keeps working the ticket and both it and the admin can change the status. `canEscalate` is agency-only and returns false once `escalatedAt` is set — an admin has nobody above to escalate to. `tickets_escalation_check` enforces that `escalated_at` and `escalated_to` are set together or not at all.
+
+`createTicket` takes no `client_id` or `agency_id`; both come from the session, so a ticket cannot be aimed at another agency. `getTicket` returns the same "could not be found" message for a missing id and a forbidden one, so it can't be used to probe for other agencies' tickets.
+
+`withClients()` attaches the raising client with a second query rather than a PostgREST embed, because `tickets` has three foreign keys into `users` and the embed syntax gets ambiguous.
+
+### Async states — required, not optional
+
+A brief requirement: **every list and every fetch needs loading, empty and error designed, not just the happy path.** An empty list and a failed one must never render as the same blank rectangle.
+
+Use `useAsync` (`src/lib/useAsync.js`) with `<AsyncBoundary>` (`src/components/AsyncBoundary.jsx`) for any list or fetch. The hook reports one of `loading | empty | error | ready` (plus `idle` when disabled), deriving **empty as part of the state machine** rather than as a branch a caller can forget, and `AsyncBoundary` makes `empty` a *required* prop for the same reason.
+
+`useAsync`'s `task` is the effect dependency, so it must be stable — wrap it in `useCallback`. An inline arrow re-fetches on every render.
+
+- **Loading** — no layout shift when content lands; don't flash it for fast responses.
+- **Empty** — say why it's empty and what to do next. "No results for this filter" is a different screen from "nothing here yet"; the latter carries the call to action.
+- **Error** — a human sentence plus a **retry that re-runs the fetch**, not a page reload.
+
+Whole-screen failures use `FullPageError` (`title`, `message`, optional `detail`, optional `onRetry`). `detail` is raw and must stay behind `import.meta.env.DEV`.
+
+Two failure modes are already handled centrally, and both were real bugs — don't undo them:
+
+- **`AuthProvider` keeps `bootstrapError` separate from `user === null`.** A failed session lookup is *not* being signed out. Collapsing them dumps a valid session at `/login` with no explanation and makes every network blip look like an auth bug. The provider renders `FullPageError` with a retry instead of rendering routes.
+- **`src/lib/supabase.js` reports `configError` rather than throwing at import time.** A module-scope throw happens before React mounts, so no error boundary can catch it and the user gets a blank white page. `src/main.jsx` checks the flag and renders a config screen; `ErrorBoundary` wraps the root for render-time throws. `src/lib/supabase.test.js` asserts importing unconfigured does not throw.
+
+**Still deferred:** skeleton rows for tables — loading is plain text today — and a retro-fit of the `Accounts` list onto `useAsync`, since its three branches are hand-rolled with no retry and thin empty copy. The three route guards also duplicate the same `route-status` markup and should collapse into a shared component.
 
 ### Passwords
 
@@ -127,13 +188,15 @@ On `/set-password` the two password boxes sit directly above one another and the
 
 `src/App.jsx` holds the whole route table: `/login`, `/set-password`, `/dashboard`, `/accounts`. **There is no `/register`** — it was removed when sign-up became top-down. Three guards wrap route elements:
 
-- `ProtectedRoute` — requires a session; optional `requiredRole` prop, redirects to `/dashboard` if the role is too low. Stashes the attempted location in `location.state.from` so `Login` can send the user back after signing in. `/accounts` uses `requiredRole={ROLES.AGENCY}`, which admits agencies and admins because the check is inclusive upward.
+- `ProtectedRoute` — requires a session; optional `requiredRole` prop, redirects to `/dashboard` if the role is too low. `/accounts` uses `requiredRole={ROLES.AGENCY}`, which admits agencies and admins because the check is inclusive upward.
 - `GuestRoute` — bounces signed-in users away from `/login`.
 - `PasswordSetupRoute` — guards `/set-password` only; see the forced-change section above.
 
 Both render a loading state while `AuthContext` resolves. `AuthProvider`'s `loading` starts `true` for this reason: without it, a signed-in user gets flashed to `/login` on first paint before the session resolves. Keep that invariant if you touch the provider.
 
 Unmatched paths redirect to `/dashboard`, which then redirects to `/login` when signed out.
+
+**Signing in always lands on `/dashboard`.** There is deliberately no "return to where you were" — `ProtectedRoute` carries no `location.state.from` and `Login` ignores any destination. The login form is most often used to *switch* accounts, and returning to the previous page drops the new user onto the previous one's screen, which may not even be theirs to see. A test in `Login.test.jsx` signs in after being bounced off `/tickets` and asserts the dashboard. Don't reintroduce the redirect without handling the account-switch case.
 
 ## Testing
 

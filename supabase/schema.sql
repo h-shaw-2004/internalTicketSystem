@@ -99,11 +99,70 @@ create table if not exists public.sessions (
 create index if not exists sessions_user_id_idx on public.sessions (user_id);
 create index if not exists sessions_expires_at_idx on public.sessions (expires_at);
 
+-- --------------------------------------------------------------------------
+-- Tickets
+--
+-- Raised by a client, worked by that client's agency, and escalated upward to
+-- the agency's admin when the agency cannot resolve it. Escalation is a request
+-- for help rather than a handover: both the agency and the admin can keep
+-- changing the status afterwards.
+-- --------------------------------------------------------------------------
+
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'ticket_status') then
+    create type ticket_status as enum ('open', 'in_progress', 'with_client', 'on_hold', 'resolved');
+  end if;
+
+  if not exists (select 1 from pg_type where typname = 'ticket_urgency') then
+    create type ticket_urgency as enum ('low', 'medium', 'high', 'critical');
+  end if;
+
+  if not exists (select 1 from pg_type where typname = 'ticket_department') then
+    create type ticket_department as enum ('hardware', 'software', 'network', 'access', 'other');
+  end if;
+end
+$$;
+
+create table if not exists public.tickets (
+  id           uuid primary key default gen_random_uuid(),
+  subject      text not null,
+  description  text not null,
+  department   ticket_department not null,
+  urgency      ticket_urgency not null,
+  status       ticket_status not null default 'open',
+
+  -- Who raised it, and the agency responsible. agency_id is copied from the
+  -- client's parent at creation rather than joined through on every read: if a
+  -- client is ever moved to another agency, existing tickets stay with the
+  -- agency that actually handled them.
+  client_id    uuid not null references public.users (id) on delete cascade,
+  agency_id    uuid not null references public.users (id) on delete restrict,
+
+  -- Both set together or neither. escalated_to is the agency's admin.
+  escalated_at timestamptz,
+  escalated_to uuid references public.users (id) on delete set null,
+
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+
+  constraint tickets_escalation_check check (
+    (escalated_at is null and escalated_to is null)
+    or (escalated_at is not null and escalated_to is not null)
+  )
+);
+
+create index if not exists tickets_client_id_idx on public.tickets (client_id);
+create index if not exists tickets_agency_id_idx on public.tickets (agency_id);
+create index if not exists tickets_escalated_to_idx on public.tickets (escalated_to);
+create index if not exists tickets_created_at_idx on public.tickets (created_at desc);
+
 -- RLS is enabled so nothing is reachable with the anon key by default.
 -- The browser client only ever needs the columns exposed by the policies below;
 -- once the API server exists it will use the service-role key and bypass these.
 alter table public.users enable row level security;
 alter table public.sessions enable row level security;
+alter table public.tickets enable row level security;
 
 -- INTERIM POLICIES — front-end-only stage.
 -- These exist so the React app can talk to the database before the API server
@@ -131,3 +190,20 @@ create policy "interim: anon update users"
 drop policy if exists "interim: anon manage sessions" on public.sessions;
 create policy "interim: anon manage sessions"
   on public.sessions for all to anon using (true) with check (true);
+
+-- Who may see and change which ticket is decided entirely by role and hierarchy
+-- in src/api/tickets.js. RLS cannot express any of that yet — there is no
+-- database-level identity to compare against — so these are wide open like the
+-- rest, and go the same way once the API server lands. Delete is withheld
+-- because nothing in the app deletes tickets.
+drop policy if exists "interim: anon read tickets" on public.tickets;
+create policy "interim: anon read tickets"
+  on public.tickets for select to anon using (true);
+
+drop policy if exists "interim: anon insert tickets" on public.tickets;
+create policy "interim: anon insert tickets"
+  on public.tickets for insert to anon with check (true);
+
+drop policy if exists "interim: anon update tickets" on public.tickets;
+create policy "interim: anon update tickets"
+  on public.tickets for update to anon using (true) with check (true);
