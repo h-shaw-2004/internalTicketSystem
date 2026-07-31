@@ -23,6 +23,10 @@ vi.mock('../api/tickets', () => ({
   createTicket: vi.fn(),
   updateTicketStatus: vi.fn(),
   escalateTicket: vi.fn(),
+  listTicketMessages: vi.fn(),
+  postTicketMessage: vi.fn(),
+  markTicketRead: vi.fn(),
+  reopenTicket: vi.fn(),
   TicketError: class TicketError extends Error {},
 }));
 

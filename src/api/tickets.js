@@ -73,3 +73,41 @@ export async function escalateTicket(ticketId) {
   });
   return ticket;
 }
+
+/**
+ * Refuse a resolution and ask for more help. Clients only, and only on a
+ * resolved ticket. The reason is posted into the conversation.
+ */
+export async function reopenTicket(ticketId, reason) {
+  const { ticket } = await request(`/tickets/${encodeURIComponent(ticketId)}/reopen`, {
+    method: 'POST',
+    body: { reason },
+  });
+  return ticket;
+}
+
+/** A ticket's whole conversation, oldest first. */
+export async function listTicketMessages(ticketId) {
+  const { messages } = await request(`/tickets/${encodeURIComponent(ticketId)}/messages`);
+  return messages;
+}
+
+/**
+ * Post to a ticket's conversation. The author is taken from the session, so a
+ * message cannot be sent as somebody else.
+ */
+export async function postTicketMessage(ticketId, body) {
+  const { message } = await request(`/tickets/${encodeURIComponent(ticketId)}/messages`, {
+    method: 'POST',
+    body: { body },
+  });
+  return message;
+}
+
+/**
+ * Mark a ticket's conversation read up to now, clearing its unread badge.
+ * Idempotent, and safe to call on every poll that brings something new.
+ */
+export async function markTicketRead(ticketId) {
+  await request(`/tickets/${encodeURIComponent(ticketId)}/read`, { method: 'POST' });
+}

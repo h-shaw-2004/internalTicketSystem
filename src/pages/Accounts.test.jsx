@@ -23,6 +23,10 @@ vi.mock('../api/tickets', () => ({
   createTicket: vi.fn(),
   updateTicketStatus: vi.fn(),
   escalateTicket: vi.fn(),
+  listTicketMessages: vi.fn(),
+  postTicketMessage: vi.fn(),
+  markTicketRead: vi.fn(),
+  reopenTicket: vi.fn(),
   TicketError: class TicketError extends Error {},
 }));
 
@@ -86,7 +90,87 @@ describe('account creation', () => {
     // Scoped to the table — the callout shows the same address, so an unscoped
     // query matches twice.
     const table = await screen.findByRole('table');
-    expect(within(table).getByText('new@agency.com')).toBeInTheDocument();
+    /*
+     * Each row carries its email twice now — once in its own column for
+     * desktop, once tucked under the name for phones. Only one is ever visible,
+     * but jsdom applies no CSS so both are found; they are in the same row, so
+     * either serves for locating it.
+     */
+    expect(within(table).getAllByText('new@agency.com')[0]).toBeInTheDocument();
+  });
+
+  /*
+   * The temporary password crosses the API once and is never recoverable, so
+   * the handover is the one moment that matters. jsdom ships no Clipboard API,
+   * so each of these installs what it needs.
+   */
+  describe('handing the credentials over', () => {
+    const useClipboard = (impl) => {
+      const writeText = vi.fn(impl ?? (() => Promise.resolve()));
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+        writable: true,
+      });
+      return writeText;
+    };
+
+    async function createOne() {
+      signedInAs('admin');
+      render(<App />);
+      await screen.findByRole('heading', { name: /^new account$/i });
+
+      fillForm({ fullName: 'New Agency', email: 'new@agency.com' });
+      fireEvent.click(screen.getByRole('button', { name: /create agency account/i }));
+      return screen.findByRole('status');
+    }
+
+    it('copies the temporary password', async () => {
+      const writeText = useClipboard();
+      await createOne();
+
+      fireEvent.click(screen.getByRole('button', { name: /copy temporary password/i }));
+
+      expect(writeText).toHaveBeenCalledWith('Tmp7#kZq4vRn2Wp');
+      // Confirmation lands inside the callout, which is already a live region.
+      expect(
+        await screen.findByRole('button', { name: /copied temporary password/i })
+      ).toBeInTheDocument();
+    });
+
+    it('copies the email too, since both are being passed on', async () => {
+      const writeText = useClipboard();
+      await createOne();
+
+      fireEvent.click(screen.getByRole('button', { name: /copy email/i }));
+
+      expect(writeText).toHaveBeenCalledWith('new@agency.com');
+    });
+
+    it('says so rather than lying when the clipboard is unavailable', async () => {
+      // No secure context, no Clipboard API — a normal outcome, not a bug.
+      Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+      await createOne();
+
+      fireEvent.click(screen.getByRole('button', { name: /copy temporary password/i }));
+
+      expect(
+        await screen.findByRole('button', { name: /select it instead/i })
+      ).toBeInTheDocument();
+      // The password is still on screen and still selectable by hand.
+      expect(screen.getByText('Tmp7#kZq4vRn2Wp')).toBeInTheDocument();
+    });
+
+    it('reports a failed write instead of claiming success', async () => {
+      useClipboard(() => Promise.reject(new Error('denied')));
+      await createOne();
+
+      fireEvent.click(screen.getByRole('button', { name: /copy temporary password/i }));
+
+      expect(
+        await screen.findByRole('button', { name: /select it instead/i })
+      ).toBeInTheDocument();
+    });
   });
 
   it('never asks the creator to choose a password', async () => {
@@ -122,8 +206,8 @@ describe('account creation', () => {
     render(<App />);
     await screen.findByRole('heading', { name: /^new account$/i });
 
-    const pending = (await screen.findByText('new@agency.com')).closest('tr');
-    const settled = screen.getByText('settled@agency.com').closest('tr');
+    const pending = (await screen.findAllByText('new@agency.com'))[0].closest('tr');
+    const settled = screen.getAllByText('settled@agency.com')[0].closest('tr');
 
     expect(pending).toHaveTextContent(/password not set/i);
     expect(settled).toHaveTextContent(/active/i);
@@ -228,11 +312,11 @@ describe('account creation', () => {
 
     // Clients are not in the top-level table — that is the whole point.
     const table = await screen.findByRole('table');
-    expect(within(table).getByText('one@agency.com')).toBeInTheDocument();
+    expect(within(table).getAllByText('one@agency.com')[0]).toBeInTheDocument();
     expect(within(table).queryByText('under@client.com')).not.toBeInTheDocument();
 
     // The count is visible without drilling in.
-    const agencyRow = within(table).getByText('one@agency.com').closest('tr');
+    const agencyRow = within(table).getAllByText('one@agency.com')[0].closest('tr');
     expect(agencyRow).toHaveTextContent('1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Agency One' }));
@@ -240,7 +324,7 @@ describe('account creation', () => {
     expect(
       await screen.findByRole('heading', { name: /clients of agency one/i })
     ).toBeInTheDocument();
-    expect(screen.getByText('under@client.com')).toBeInTheDocument();
+    expect(screen.getAllByText('under@client.com')[0]).toBeInTheDocument();
   });
 
   it('opens an agency from anywhere on its row', async () => {
@@ -259,7 +343,7 @@ describe('account creation', () => {
     const table = await screen.findByRole('table');
 
     // The email cell, not the name button.
-    fireEvent.click(within(table).getByText('one@agency.com'));
+    fireEvent.click(within(table).getAllByText('one@agency.com')[0]);
 
     expect(
       await screen.findByRole('heading', { name: /clients of agency one/i })
@@ -286,9 +370,9 @@ describe('account creation', () => {
     ]);
 
     render(<App />);
-    await screen.findByRole('heading', { name: /your agencies/i });
-
-    const toggle = screen.getByRole('button', { name: 'Agency One' });
+    // Await the row itself, not just the heading above it — the list loads in
+    // an effect, so the heading is on screen before the agencies are.
+    const toggle = await screen.findByRole('button', { name: 'Agency One' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(toggle);
@@ -298,7 +382,8 @@ describe('account creation', () => {
       'true'
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    // Scoped: the mobile drawer carries a "Close menu" button of its own.
+    fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: /close/i }));
     expect(
       screen.queryByRole('heading', { name: /clients of agency one/i })
     ).not.toBeInTheDocument();
@@ -343,16 +428,15 @@ describe('accounts entry point', () => {
     authApi.listChildAccounts.mockResolvedValue([]);
   });
 
-  it('shows the manage link only to roles that can create accounts', async () => {
-    for (const [role, expected] of [
-      ['admin', /manage accounts/i],
-      ['agency', /manage accounts/i],
-    ]) {
+  // The entry point is a nav item now rather than a header action, but the rule
+  // it encodes is unchanged: only roles that can create accounts see the way in.
+  it('shows the accounts nav item only to roles that can create accounts', async () => {
+    for (const role of ['admin', 'agency']) {
       authApi.getCurrentUser.mockResolvedValue(user(role));
       window.history.pushState({}, '', '/tickets');
       const { unmount } = render(<App />);
 
-      expect(await screen.findByRole('link', { name: expected })).toBeInTheDocument();
+      expect(await screen.findByRole('link', { name: /^accounts$/i })).toBeInTheDocument();
       unmount();
     }
 
@@ -361,6 +445,6 @@ describe('accounts entry point', () => {
     render(<App />);
 
     await screen.findByRole('heading', { level: 1, name: /^tickets$/i });
-    expect(screen.queryByRole('link', { name: /manage/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^accounts$/i })).not.toBeInTheDocument();
   });
 });

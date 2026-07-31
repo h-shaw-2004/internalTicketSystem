@@ -7,7 +7,11 @@
       grey. Green and red appear only as reserved semantics (success / danger),
       never as decoration. There are no other hues.
    2. FAST MOTION. 150ms for hover, 200ms for entrances. Nothing longer.
-   3. MOBILE FIRST DOWN TO 360px. One breakpoint at 640px does the stacking.
+   3. MOBILE FIRST DOWN TO 360px. Two breakpoints, and only two:
+        900px — below it the header collapses to a menu button and a title,
+                and everything else moves into the AppNav drawer. Above it
+                nothing changes: the desktop design is untouched.
+        640px — content stacking and tighter padding.
    =========================================================================== */
 
 :root {
@@ -24,6 +28,10 @@
   /* The single accent */
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
+  /* Tinted pair, for the rare chip that needs to be the accent rather than
+     merely sit next to it. Same relationship as the danger/success pairs. */
+  --accent-bg: #eff4ff;
+  --accent-border: #d3e0fd;
 
   /* Reserved semantics — never used decoratively */
   --danger: #c1352b;
@@ -494,11 +502,295 @@ h3 {
   color: var(--muted);
 }
 
+.header-title {
+  min-width: 0;
+}
+
 .header-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+/* --- Navigation ----------------------------------------------------------- */
+
+/*
+ * Small screens only. Above 900px this whole block is display:none and the
+ * header is exactly the desktop design it always was.
+ */
+.app-nav {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 21;
+  width: min(280px, 82vw);
+  padding-left: max(14px, env(safe-area-inset-left, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 14px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  /*
+   * Off-canvas rather than display:none, so opening and closing can animate.
+   * `visibility` is what takes it out of the tab order while it is closed — a
+   * transform alone would leave its links focusable off-screen.
+   */
+  visibility: hidden;
+  transform: translateX(-100%);
+  transition: transform var(--base) var(--ease), visibility var(--base) var(--ease);
+}
+
+.app-nav-open {
+  visibility: visible;
+  transform: translateX(0);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 4px 14px 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nav-close {
+  /* Pushed to the far edge of the brand row. */
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+
+.nav-close:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.nav-brand-mark {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.nav-links {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  /* 44px minimum, because these are thumb targets rather than mouse targets. */
+  min-height: 44px;
+  padding: 9px 10px;
+  font-size: 15px;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+
+.nav-link:hover {
+  color: var(--text);
+  background: var(--bg);
+  text-decoration: none;
+}
+
+/* The current page is the one place the nav carries the accent. */
+.nav-link-current {
+  color: var(--accent);
+  background: var(--accent-bg);
+  font-weight: 600;
+}
+
+.nav-foot {
+  /* Pins identity and sign-out to the bottom of the drawer. */
+  margin-top: auto;
+  padding-top: 16px;
+  /* Clears the home indicator on a notched phone. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid var(--border);
+}
+
+.nav-identity {
+  display: grid;
+  gap: 1px;
+  margin: 0 0 10px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.nav-identity-name {
+  font-weight: 600;
+}
+
+.nav-identity .muted {
+  font-size: 12px;
+}
+
+.nav-signout {
+  width: 100%;
+  min-height: 44px;
+}
+
+/* --- The mobile drawer ---------------------------------------------------- */
+
+.nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Comfortably past the 44px minimum touch target. */
+  width: 44px;
+  height: 44px;
+  flex: none;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--fast) var(--ease);
+}
+
+.nav-toggle:hover {
+  border-color: var(--border-strong);
+}
+
+.nav-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The back chevron takes the menu button's place on a sub-page, so it reuses
+ * its box and its hide-above-900px rule — one control, always the same spot.
+ */
+.nav-back {
+  text-decoration: none;
+}
+
+.nav-back:hover {
+  text-decoration: none;
+}
+
+/* Drawn from two borders rather than a glyph, so it matches at any weight. */
+.nav-back-chevron {
+  width: 9px;
+  height: 9px;
+  /* Optical centring: a chevron's mass sits right of its bounding box. */
+  margin-left: 3px;
+  border-left: 1.5px solid var(--text);
+  border-bottom: 1.5px solid var(--text);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+/* Three bars drawn from one element, so the button needs no icon set. */
+.nav-toggle-bars,
+.nav-toggle-bars::before,
+.nav-toggle-bars::after {
+  display: block;
+  width: 17px;
+  height: 1.5px;
+  background: var(--text);
+  border-radius: 1px;
+}
+
+.nav-toggle-bars {
+  position: relative;
+}
+
+.nav-toggle-bars::before,
+.nav-toggle-bars::after {
+  content: '';
+  position: absolute;
+  left: 0;
+}
+
+.nav-toggle-bars::before {
+  top: -5px;
+}
+
+.nav-toggle-bars::after {
+  top: 5px;
+}
+
+.nav-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgb(16 24 40 / 0.4);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--base) var(--ease), visibility var(--base) var(--ease);
+}
+
+.nav-scrim-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/*
+ * Anything the drawer already carries. Marked at the call site rather than
+ * hidden by a blanket selector, so it stays obvious *why* a control disappears
+ * on a phone — and so a control that genuinely belongs on both can opt out.
+ */
+@media (max-width: 899px) {
+  .wide-only {
+    display: none;
+  }
+
+  .app-header {
+    /* Menu button, then title. Nothing else competes for the top of a phone. */
+    flex-wrap: nowrap;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .header-title {
+    flex: 1;
+  }
+
+  /*
+   * Identity, page actions and sign-out are all in the drawer on a phone, so
+   * the header does not carry them twice.
+   */
+  .header-identity,
+  .header-actions {
+    display: none;
+  }
+}
+
+/*
+ * Desktop is the original design: no drawer, no menu button, nothing modal.
+ * The header alone carries identity, actions and sign-out, exactly as before.
+ */
+@media (min-width: 900px) {
+  .app-nav,
+  .nav-toggle,
+  .nav-scrim,
+  /* The mirror of .wide-only: things that exist only where the drawer does. */
+  .narrow-only {
+    display: none;
+  }
 }
 
 .app-main {
@@ -507,10 +799,29 @@ h3 {
   padding: 32px;
 }
 
+@media (max-width: 640px) {
+  .app-main {
+    padding: 20px 16px;
+  }
+
+  .panel {
+    padding: 20px 16px;
+  }
+}
+
 .app-main-stack {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+/*
+ * Flex items default to min-width: auto, so a panel holding anything wide
+ * refuses to shrink and the page gains a horizontal scrollbar. This lets the
+ * wrapping inside each panel actually do its job.
+ */
+.app-main-stack > * {
+  min-width: 0;
 }
 
 .panel {
@@ -612,6 +923,41 @@ h3 {
   border-color: var(--danger-border);
 }
 
+/*
+ * ...but only while it is still outstanding. Once the ticket is resolved the
+ * same fact becomes a record rather than an alarm, so it drops back to the
+ * plain neutral pill. The label is unchanged — what happened is still worth
+ * seeing, it just stops asking for attention.
+ */
+.badge.badge-escalated-past {
+  margin-left: 8px;
+  color: var(--muted);
+}
+
+/*
+ * Reopened work. Accent rather than danger: it wants noticing because it is
+ * probably a quick fix somebody has already been inside, not because anything
+ * has gone wrong.
+ */
+.badge.badge-reopened {
+  margin-left: 8px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+/*
+ * Unread replies are the other. It earns the accent because it is the one chip
+ * that is asking to be clicked rather than reporting a state — and it carries a
+ * number, so it never depends on the colour to be understood.
+ */
+.badge.badge-unread {
+  margin-left: 8px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
 .urgency {
   font-weight: 500;
 }
@@ -646,6 +992,29 @@ h3 {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+}
+
+/*
+ * A second line inside a cell — the email tucked under a name once its own
+ * column is dropped.
+ *
+ * Hidden by default and revealed in the very block that hides `.col-secondary`,
+ * so the two can never both be showing and the address is never on screen
+ * twice. That pairing is the whole reason this is not a general utility class.
+ */
+.cell-state {
+  display: none;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.cell-sub {
+  display: none;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .account-table th,
@@ -725,6 +1094,66 @@ h3 {
 
 .account-table a:hover {
   text-decoration: underline;
+}
+
+/* --- Open / Resolved filter ----------------------------------------------- */
+
+/*
+ * The small-screen counterpart to the resolved archive. A segmented control
+ * rather than two nav items, because it is a filter of one list and needs to
+ * say so — and because showing both counts side by side is the whole point.
+ */
+.view-filter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin: 0 0 18px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.view-filter-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+
+.view-filter-option:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* The selected segment lifts onto the surface, the way a real switch would. */
+.view-filter-option-current {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.view-filter-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  padding: 1px 7px;
+  color: var(--muted);
+  background: var(--bg);
+  border-radius: 999px;
+}
+
+.view-filter-option-current .view-filter-count {
+  color: var(--accent);
+  background: var(--accent-bg);
 }
 
 /* --- Ticket count tiles --------------------------------------------------- */
@@ -813,9 +1242,23 @@ h3 {
 .detail-grid {
   margin: 0;
   display: grid;
-  grid-template-columns: auto 1fr;
+  /*
+   * minmax(0, 1fr), not 1fr. A bare `1fr` is `minmax(auto, 1fr)`, which refuses
+   * to shrink below its content's min-content width — so one long unbreakable
+   * value (an email address, say) pushes the whole page sideways on a phone.
+   */
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 10px 24px;
   font-size: 14px;
+}
+
+/*
+ * Each dt/dd pair is wrapped so it cannot break across lines on a phone.
+ * `display: contents` hands them straight back to the grid here, so the
+ * two-column desktop layout is exactly what it was before the wrapper existed.
+ */
+.detail-grid > div {
+  display: contents;
 }
 
 .detail-grid dt {
@@ -829,6 +1272,8 @@ h3 {
 
 .detail-grid dd {
   margin: 0;
+  /* Emails and long names have nowhere to break otherwise. */
+  overflow-wrap: anywhere;
 }
 
 .detail-subhead {
@@ -846,6 +1291,221 @@ h3 {
   /* Descriptions are typed into a textarea, so newlines are meaningful. */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* --- Resolved archive ----------------------------------------------------- */
+
+/*
+ * Resolved work collapses out of the way at the foot of the list rather than
+ * vanishing. Quiet by default — muted, closed, no accent — because it is
+ * deliberately not where anyone should be looking, but it stays one click away.
+ *
+ * Desktop only (`.wide-only` at the call site): on a phone the drawer's
+ * Resolved item goes to `?view=resolved` instead, because a collapsed archive
+ * underneath a full list is a long scroll on a small screen.
+ */
+.archive {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.archive > summary {
+  padding: 14px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--fast) var(--ease);
+}
+
+.archive > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Own marker, so the disclosure reads the same in every browser. */
+.archive > summary::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 8px;
+  vertical-align: 1px;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform var(--fast) var(--ease);
+}
+
+.archive[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.archive > summary:hover {
+  color: var(--text);
+}
+
+.archive > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.archive .table-scroll {
+  margin-top: 12px;
+}
+
+/* --- Ticket conversation -------------------------------------------------- */
+
+/*
+ * The thread is a document, not a chat app. Messages are full-width rows in
+ * reading order rather than alternating bubbles: a support conversation is
+ * read top to bottom weeks later by someone who was not in it, and the
+ * left/right convention only tells *you* who spoke.
+ *
+ * Your own messages are marked by an accent rule down the side, so authorship
+ * is visible at a glance without the layout changing shape.
+ */
+
+.message-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.message {
+  padding: 12px 14px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.message-mine {
+  border-left-color: var(--accent);
+}
+
+/*
+ * A reopen is an event in the thread, not a reply, so it is marked rather than
+ * attributed — the accent rule and the label do the work that an author name
+ * and role chip do on an ordinary message.
+ */
+.message-reopen {
+  border-left-color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.message-event {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.message-byline {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.message-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.message-author {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Same neutral pill as every other chip — the label carries the meaning. */
+.message-role {
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.message-time {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.message-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  /* Typed into a textarea, so newlines are meaningful. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Reopening. Same shape as the composer below — a field, then its action —
+ * and the button sits right for the same reason Send does: both submit the
+ * textarea above them, so they land in the same place on the page.
+ */
+.reopen-form {
+  display: grid;
+  gap: 14px;
+}
+
+.reopen-form .field {
+  margin: 0;
+}
+
+.reopen-form .button {
+  justify-self: end;
+}
+
+.composer {
+  display: grid;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.composer .field {
+  margin: 0;
+}
+
+.composer-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.composer-count {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.composer-locked {
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  max-width: 62ch;
+}
+
+@media (max-width: 640px) {
+  .message-time {
+    /* Below the name rather than pushed to a far edge that no longer exists. */
+    margin-left: 0;
+    flex-basis: 100%;
+  }
 }
 
 /* --- Async list states ---------------------------------------------------- */
@@ -893,6 +1553,40 @@ h3 {
 .credential-list dd {
   margin: 0;
   min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/*
+ * Sits inside the success-tinted callout, so it borrows that colour rather than
+ * introducing one — the stylesheet's single-accent rule still holds, because
+ * green here is the container's reserved semantic, not decoration.
+ */
+.copy-button {
+  flex: none;
+  min-height: 32px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success);
+  background: var(--surface);
+  border: 1px solid var(--success-border);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+
+.copy-button:hover {
+  border-color: var(--success);
+}
+
+.copy-button:focus-visible {
+  outline: 2px solid var(--success);
+  outline-offset: 2px;
 }
 
 .credential-list code {
@@ -911,23 +1605,6 @@ h3 {
 @media (max-width: 640px) {
   body {
     font-size: 15px;
-  }
-
-  .app-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-    padding: 16px;
-  }
-
-  /* Actions become a full-width row of equal buttons rather than wrapping
-     awkwardly under the title. */
-  .header-actions {
-    width: 100%;
-  }
-
-  .header-actions > * {
-    flex: 1 1 auto;
   }
 
   .app-main {
@@ -971,32 +1648,167 @@ h3 {
     align-items: stretch;
   }
 
-  .detail-grid,
   .credential-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 2px;
   }
 
-  .detail-grid dt,
+  /* Thumb-sized where it is actually tapped. */
+  .copy-button {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
   .credential-list dt {
     margin-top: 10px;
   }
 
-  .detail-grid dt:first-child,
   .credential-list dt:first-child {
     margin-top: 0;
   }
 
+  /*
+   * Six facts stacked label-above-value is a dozen rows between the subject and
+   * the conversation — which is usually what the ticket was opened for. Same
+   * six facts as an inline wrapping strip instead, hiding nothing.
+   *
+   * The wrapper divs stop becoming grid contents here, so each pair is one
+   * flex item and a label can never end up on a different line from its value.
+   */
+  .detail-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+  }
+
+  .detail-grid > div {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .detail-grid dt {
+    padding-top: 0;
+  }
+
+  /*
+   * Reading the thread is the common reason to open a ticket; changing a status
+   * or reopening is a deliberate act you scroll to on purpose. The conversation
+   * is not moved above the ticket panel, because the <h1> only says "Ticket" —
+   * the subject lives in that panel, and leading with messages would strand you
+   * with no idea which ticket they belong to.
+   */
+  .panel-ticket {
+    order: 1;
+  }
+
+  .panel-conversation {
+    order: 2;
+  }
+
+  .panel-actions {
+    order: 3;
+  }
+
+  .panel-reopen {
+    order: 4;
+  }
+
+  /*
+   * Six columns cannot fit a phone, and a table that scrolls sideways inside a
+   * page that does not is the untidiest thing on a small screen. Dropping the
+   * two nobody scans a queue by gets the rest to fit, and keeps the markup a
+   * real table — faking cards with `display: block` would throw away the row
+   * and column semantics a screen reader relies on.
+   *
+   * `.table-scroll` keeps its `overflow-x: auto` — it shows no scrollbar once
+   * the content fits, and it is still the safety net for the wider Accounts
+   * table, which has not been narrowed.
+   */
+  .col-secondary {
+    display: none;
+  }
+
+  .cell-sub {
+    display: block;
+  }
+
+  .cell-state {
+    display: flex;
+  }
+
+  /*
+   * The real reason the ticket table still needed scrolling: every cell is
+   * `white-space: nowrap`, so a subject could never wrap and the table stayed
+   * as wide as its longest one no matter how many columns were dropped. Chips
+   * carry their own nowrap, so they stay intact.
+   */
+  .account-table th,
+  .account-table td {
+    white-space: normal;
+    /* Rows are several lines tall now; a middle-aligned neighbour looks adrift. */
+    vertical-align: top;
+  }
+
+  .account-table {
+    font-size: 13px;
+  }
+
+  .account-table th,
+  .account-table td {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .account-table th:first-child,
+  .account-table td:first-child {
+    padding-left: 0;
+  }
+
+  .account-table th:last-child,
+  .account-table td:last-child {
+    padding-right: 0;
+  }
+
+  /*
+   * Six tiles become two rows of cards on a phone — over a hundred pixels of
+   * counts before a single ticket appears. Same six figures, laid out as a
+   * dense inline strip instead: about a fifth of the height, and it still
+   * shows the zeros so the row does not reflow as work moves between states.
+   */
   .summary-row {
-    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 16px;
+    margin-bottom: 16px;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
   }
 
   .summary-tile {
-    padding: 12px;
+    /* Was column-reverse: count above label. Inline reads "● Open 4". */
+    flex-direction: row;
+    align-items: baseline;
+    gap: 6px;
+    padding: 0;
+    background: none;
+  }
+
+  .summary-tile:hover {
+    background: none;
+  }
+
+  .summary-tile dt {
+    font-size: 13px;
   }
 
   .summary-tile dd {
-    font-size: 20px;
+    font-size: 14px;
+    letter-spacing: 0;
   }
 
   .account-table {

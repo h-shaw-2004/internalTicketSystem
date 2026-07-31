@@ -1,4 +1,4 @@
-import { STATUS_LABELS, STATUS_ORDER } from '../../shared/tickets.js';
+import { STATUS_LABELS, STATUS_ORDER, hasOpenEscalation } from '../../shared/tickets.js';
 
 /**
  * At-a-glance counts above a ticket list.
@@ -23,7 +23,13 @@ export default function TicketSummary({ tickets }) {
     {
       key: 'escalated',
       label: 'Escalated',
-      count: tickets.filter((ticket) => ticket.escalatedAt).length,
+      /*
+       * Outstanding escalations, not every escalation that ever happened.
+       * The status tiles above are a snapshot of where work sits, and this one
+       * reads the same way — in red — so counting resolved tickets here would
+       * claim an admin still owed something on work that is finished.
+       */
+      count: tickets.filter(hasOpenEscalation).length,
       markClass: 'badge-escalated',
     },
   ];

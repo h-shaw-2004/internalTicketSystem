@@ -152,10 +152,99 @@ create table if not exists public.tickets (
   )
 );
 
+-- When a client last refused a resolution. Genuinely new information rather
+-- than a duplicate of `status`: an open ticket that came back is not the same
+-- thing as one nobody has looked at yet, and nothing else records the
+-- difference. Mirrors escalated_at, and like it is never cleared.
+alter table public.tickets add column if not exists reopened_at timestamptz;
+
 create index if not exists tickets_client_id_idx on public.tickets (client_id);
 create index if not exists tickets_agency_id_idx on public.tickets (agency_id);
 create index if not exists tickets_escalated_to_idx on public.tickets (escalated_to);
 create index if not exists tickets_created_at_idx on public.tickets (created_at desc);
+
+-- --------------------------------------------------------------------------
+-- Ticket messages
+--
+-- A two-way thread per ticket, between the client who raised it and the agency
+-- working it. Once a ticket is escalated the agency's admin can join in — until
+-- then an admin may read a thread belonging to one of its agencies but not post
+-- to it, so browsing for oversight never turns into walking uninvited into a
+-- client conversation. canPostMessage in shared/tickets.js is that rule; the
+-- server enforces it in server/routes/tickets.js.
+--
+-- author_role is a snapshot, duplicated here on purpose, for the same reason
+-- tickets.agency_id is copied from the client's parent rather than joined
+-- through: if an account is later promoted, its old messages must stay
+-- attributed the way they were actually sent.
+-- --------------------------------------------------------------------------
+
+create table if not exists public.ticket_messages (
+  id          uuid primary key default gen_random_uuid(),
+
+  ticket_id   uuid not null references public.tickets (id) on delete cascade,
+
+  -- restrict, not cascade: deleting an account must not silently punch holes in
+  -- a conversation the other party still relies on.
+  author_id   uuid not null references public.users (id) on delete restrict,
+  author_role account_role not null,
+
+  body        text not null,
+  created_at  timestamptz not null default now(),
+
+  -- Mirrors checkMessage in shared/tickets.js. Whitespace-only is not a message.
+  constraint ticket_messages_body_check
+    check (length(btrim(body)) between 1 and 4000)
+);
+
+-- Threads are always read whole and in order, so one composite index serves
+-- every query the API makes.
+create index if not exists ticket_messages_thread_idx
+  on public.ticket_messages (ticket_id, created_at);
+
+-- What a message *is*. Ordinary messages are typed by a person; a 'reopen' row
+-- is the reason a client gave for refusing a resolution, and the thread renders
+-- it as an event so an agency can tell a returning problem from a new one.
+--
+-- Deliberately text + a check constraint rather than a Postgres enum. The set
+-- will grow (status changes, assignment notes), and widening a check constraint
+-- is a drop-and-add in this file, whereas `alter type ... add value` is a
+-- migration that cannot be rolled back in a transaction.
+alter table public.ticket_messages
+  add column if not exists kind text not null default 'message';
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'ticket_messages_kind_check') then
+    alter table public.ticket_messages
+      add constraint ticket_messages_kind_check check (kind in ('message', 'reopen'));
+  end if;
+end
+$$;
+
+-- --------------------------------------------------------------------------
+-- Read state
+--
+-- "Unread" is a fact about a *viewer*, not about a ticket, so it cannot be
+-- derived from ticket_messages alone. One row per person per ticket they have
+-- opened; no row at all means they have never looked, which is exactly the
+-- right default — everything on it is unread.
+--
+-- Unread for a viewer is therefore: messages on the ticket that someone else
+-- wrote after their last_read_at. Excluding your own authorship is what stops
+-- sending a reply from marking your own ticket unread.
+-- --------------------------------------------------------------------------
+
+create table if not exists public.ticket_reads (
+  ticket_id    uuid not null references public.tickets (id) on delete cascade,
+  user_id      uuid not null references public.users (id) on delete cascade,
+  last_read_at timestamptz not null default now(),
+
+  primary key (ticket_id, user_id)
+);
+
+-- The lists look this up per viewer across many tickets at once.
+create index if not exists ticket_reads_user_idx on public.ticket_reads (user_id);
 
 -- --------------------------------------------------------------------------
 -- Row level security
@@ -174,6 +263,8 @@ create index if not exists tickets_created_at_idx on public.tickets (created_at 
 alter table public.users enable row level security;
 alter table public.sessions enable row level security;
 alter table public.tickets enable row level security;
+alter table public.ticket_messages enable row level security;
+alter table public.ticket_reads enable row level security;
 
 -- The front-end-only stage published these to the anon role. They are holes now
 -- that a real API exists, so re-running this file removes them.

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createAccount, listChildAccounts } from '../api/auth';
 import {
@@ -21,6 +20,48 @@ function StatusChip({ account }) {
   );
 }
 
+/**
+ * Copies one credential to the clipboard.
+ *
+ * The temporary password crosses the API exactly once and is never recoverable,
+ * so the handover is the one moment that matters — retyping a generated
+ * password by hand is where it goes wrong.
+ *
+ * The callout around this is already `role="status"`, so the label changing to
+ * "Copied" is announced without adding a second live region.
+ */
+function CopyButton({ value, label }) {
+  const [state, setState] = useState('idle');
+  const timer = useRef(null);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  async function copy() {
+    clearTimeout(timer.current);
+
+    try {
+      // The Clipboard API needs a secure context, so being absent is a normal
+      // outcome rather than a bug — the value stays selectable either way.
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+
+      await navigator.clipboard.writeText(value);
+      setState('copied');
+      timer.current = setTimeout(() => setState('idle'), 2000);
+    } catch {
+      setState('failed');
+    }
+  }
+
+  const text = { idle: 'Copy', copied: 'Copied', failed: 'Select it instead' }[state];
+
+  return (
+    <button type="button" className="copy-button" onClick={copy}>
+      {text}
+      <span className="visually-hidden"> {label}</span>
+    </button>
+  );
+}
+
 /** Plain list of accounts of a single kind — no type or parent column needed. */
 function AccountTable({ accounts }) {
   return (
@@ -29,20 +70,32 @@ function AccountTable({ accounts }) {
         <thead>
           <tr>
             <th scope="col">Name</th>
-            <th scope="col">Email</th>
+            {/*
+             * Email is the widest column and the one that cannot be dropped —
+             * it is the account's identity. On a phone it moves under the name
+             * instead, which removes the column without losing anything.
+             */}
+            <th scope="col" className="col-secondary">
+              Email
+            </th>
             <th scope="col">Status</th>
-            <th scope="col">Created</th>
+            <th scope="col" className="col-secondary">
+              Created
+            </th>
           </tr>
         </thead>
         <tbody>
           {accounts.map((account) => (
             <tr key={account.id}>
-              <td>{account.fullName}</td>
-              <td>{account.email}</td>
+              <td>
+                {account.fullName}
+                <span className="cell-sub">{account.email}</span>
+              </td>
+              <td className="col-secondary">{account.email}</td>
               <td>
                 <StatusChip account={account} />
               </td>
-              <td>{formatDate(account.createdAt)}</td>
+              <td className="col-secondary">{formatDate(account.createdAt)}</td>
             </tr>
           ))}
         </tbody>
@@ -165,14 +218,7 @@ export default function Accounts() {
 
   return (
     <div className="app-layout">
-      <AppHeader
-        title="Accounts"
-        action={
-          <Link className="button button-ghost" to="/tickets">
-            Back to tickets
-          </Link>
-        }
-      />
+      <AppHeader title="Accounts" backTo="/tickets" />
 
       <main className="app-main app-main-stack">
         <section className="panel">
@@ -193,10 +239,12 @@ export default function Accounts() {
                   <dt>Email</dt>
                   <dd>
                     <code>{issued.email}</code>
+                    <CopyButton value={issued.email} label="email" />
                   </dd>
                   <dt>Temporary password</dt>
                   <dd>
                     <code>{issued.password}</code>
+                    <CopyButton value={issued.password} label="temporary password" />
                   </dd>
                 </dl>
               </div>
@@ -329,10 +377,14 @@ export default function Accounts() {
                 <thead>
                   <tr>
                     <th scope="col">Agency</th>
-                    <th scope="col">Email</th>
+                    <th scope="col" className="col-secondary">
+                      Email
+                    </th>
                     <th scope="col">Clients</th>
                     <th scope="col">Status</th>
-                    <th scope="col">Created</th>
+                    <th scope="col" className="col-secondary">
+                      Created
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -355,13 +407,14 @@ export default function Accounts() {
                           >
                             {agency.fullName}
                           </button>
+                          <span className="cell-sub">{agency.email}</span>
                         </td>
-                        <td>{agency.email}</td>
+                        <td className="col-secondary">{agency.email}</td>
                         <td>{clients.length}</td>
                         <td>
                           <StatusChip account={agency} />
                         </td>
-                        <td>{formatDate(agency.createdAt)}</td>
+                        <td className="col-secondary">{formatDate(agency.createdAt)}</td>
                       </tr>
                     );
                   })}

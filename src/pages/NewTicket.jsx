@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { createTicket } from '../api/tickets';
 import {
@@ -54,14 +54,7 @@ export default function NewTicket() {
 
   return (
     <div className="app-layout">
-      <AppHeader
-        title="Raise a ticket"
-        action={
-          <Link className="button button-ghost" to="/tickets">
-            Back to tickets
-          </Link>
-        }
-      />
+      <AppHeader title="Raise a ticket" backTo="/tickets" />
 
       <main className="app-main">
         <section className="panel">
