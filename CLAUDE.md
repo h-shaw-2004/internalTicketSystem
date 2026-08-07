@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## What this is
+
+An internal ticketing system built to a brief: clients raise support tickets, their agency works them, and anything the agency cannot resolve is escalated to a platform admin. Three roles in a strict tree (admin → agency → client), a two-way chat on every ticket, and five statuses. **The brief is a frontend exercise** — the API exists to make the UI real, so prefer the simplest server change that makes a screen honest.
+
+Three places the build knowingly departs from that brief. Don't "fix" them without asking:
+
+- **No registration.** The brief asks for one, but accounts are created top-down — an admin makes agencies, an agency makes clients — and a self-registered user has no parent, which `users_hierarchy_check` forbids. Registration was agreed out rather than bolted on. The first admin comes from the SQL editor.
+- **Clients can reopen a resolved ticket**, which is a client changing a status, and the brief says they cannot. It is one transition with a mandatory reason, never the status dropdown; approved deliberately. See "Reopening" below.
+- **`ErrorBoundary` is a class component**, against the "hooks only" constraint, because React still has no hook equivalent of `componentDidCatch`. It is the only class in `src/`, and the alternative is a dependency that is a class internally.
+
+Known gaps are recorded where they belong: untested `server/` routes under **Testing**, and skeleton rows plus the `Accounts` list's missing retry under **Async states**.
+
 ## Commands
 
 ```bash
@@ -25,8 +37,14 @@ There is no linter or formatter configured — don't invent an `npm run lint`.
 
 1. `cp .env.example .env` and set `DATABASE_URL` (Supabase → Project Settings → Database → Connection string → URI). The **server** reads it; nothing reaches the browser. `server/env.js` refuses to boot without it.
 2. Run `supabase/schema.sql` in the Supabase SQL editor. It is idempotent, so it is safe to re-run after edits.
-3. Run `supabase/seed.sql` in the same editor for the test accounts (below). Also idempotent.
+3. Run `supabase/seed.sql` in the same editor for the test accounts and demo tickets (below). Also idempotent.
 4. `npm run dev` starts **both** the API server (port 3001) and Vite (port 5173) via `concurrently`. `npm run dev:server` / `npm run dev:client` run them separately.
+
+### Starting over
+
+`supabase/reset.sql` empties every table — accounts, tickets, conversations, sessions — so `seed.sql` can lay a known state on top of a database cluttered with hand-made test data. Run reset, then seed. **schema.sql does not need re-running**: it deletes rows, never tables, so every type, constraint, index and RLS setting survives.
+
+**It is deliberately not part of `seed.sql`.** Seeding is something you do often and safely — it resets the seeded rows in place and leaves accounts made through the app alone. Folding a wipe into it would mean every routine re-seed quietly destroyed whatever was being tested. One statement, `truncate ... cascade`, so it is all-or-nothing; `cascade` exists only to save writing the leaf-first order that `users_parent_fkey` and `ticket_messages.author_id` would otherwise demand, since both are `on delete restrict`.
 
 ### Test accounts
 
@@ -52,9 +70,26 @@ The `<name>Password?` shape satisfies every rule in `PASSWORD_RULES` — the dig
 
 There is **no public sign-up**. Agencies are created by an admin and clients by an agency, so the first admin has to come from the SQL editor — that is the only channel that reaches the database directly &mdash; the browser cannot create accounts of any kind except through the API.
 
-`supabase/seed.sql` is **generated** — edit `scripts/generate-seed.mjs` and run `npm run seed`, don't hand-edit the SQL. The hashes must be precomputed in Node because pgcrypto has no PBKDF2 and cannot produce the format `shared/password.js` expects. Regenerating produces new salts, so the file's diff churns every run; only regenerate when the accounts or the hashing parameters actually change.
+`supabase/seed.sql` is **generated** — edit `scripts/generate-seed.mjs` and run `npm run seed`, don't hand-edit the SQL. The hashes must be precomputed in Node because pgcrypto has no PBKDF2 and cannot produce the format `shared/password.js` expects. Regenerating produces new salts, so the accounts' half of the file churns on every run whatever you changed; that is expected noise in the diff, not a mistake.
 
 Local development only — these passwords are trivially guessable.
+
+### Demo tickets
+
+The seed also creates **10 tickets and 25 messages** across both branches, so a fresh database opens on real work rather than on three empty states. Between them they cover every status, every urgency, every department, an open escalation and a spent one, a reopened ticket, resolved work in both agencies' archives, and unread replies waiting for each of the three roles.
+
+Four things about how they are written are load-bearing:
+
+- **Fixed ids.** A ticket has no natural key — two can share a subject — so the generator supplies one, and every row is `on conflict (id) do update`. Without that a re-seed would add a second copy of everything instead of resetting what is there. Ticket ids are `10000000-…-N`, messages `20000000-…`.
+- **`agency_id` comes from the client's own parent and `escalated_to` from that agency's parent**, joined through in SQL rather than naming an agency directly — the same derivation `POST /tickets` and the escalate route use. The seed therefore cannot create a ticket the API would have refused to.
+- **Read state is seeded deliberately**, because it is what decides where an unread badge appears. Everyone who can see a ticket is marked caught up except the accounts in that ticket's `unreadFor`. Leave it out and *every* seeded ticket badges for *everybody* — no row means never opened — and, because an unread reply keeps a ticket out of the archive, nothing resolved would ever collapse into it.
+- **The data is validated against `shared/tickets.js`** before any SQL is written: `isStatus`/`isDepartment`/`isUrgency`, `MESSAGE_KINDS`, and a check that each message's author could actually have posted it (an admin only on an escalated ticket, mirroring `canPostMessage`). Same habit as running `checkPassword` over the seed passwords — a typo fails `npm run seed` rather than Postgres, or worse, seeds a state the app itself would refuse to create.
+
+Times are relative (`now() - interval 'N days'`), so a seed written months ago still reads as current work.
+
+**Watch the wording of demo copy.** Supabase's SQL editor lints the file as text before running it, and a plural noun sitting in a message body gets mistaken for a table name. One ticket said "people are walking into rooms that are actually booked", which produced an RLS warning about a `rooms` table and an offered fix that generated `alter table rooms ...` — failing with `42P01: relation "rooms" does not exist`. The seed has no DDL in it at all. Avoid bare plurals that read like tables, and never accept that editor's auto-fix.
+
+**Re-running restores the demo threads exactly as documented**, which means replies you added by hand to a seeded ticket are deleted. That is deliberate — the seed is a reset — but it is the one destructive thing in the file.
 
 **Never add a `VITE_`-prefixed database variable.** Anything `VITE_`-prefixed is inlined into the JavaScript every visitor downloads. The browser has no database credentials at all now, and it must stay that way — it talks to `/api` and nothing else.
 
@@ -129,6 +164,8 @@ Raised by a client, worked by that client's agency, escalated to the agency's ad
 | client | tickets they raised | raise tickets |
 | agency | tickets from their clients (`agency_id = self`) | change status, escalate once |
 | admin | escalated queue (`escalated_to = self`), plus browse-by-agency | change status |
+
+The list's **Raised** column carries a **time as well as a date** — "raised at 09:14" is what tells an agency whether a ticket landed this morning or overnight, and a date alone flattens everything raised today into one group. It uses `{ dateStyle: 'short', timeStyle: 'short' }` rather than the bare `toLocaleString()` the detail page uses, because that includes seconds, which are noise in the narrowest column in the table. Same value in the phone sub-line, which joins it with client and department.
 
 `tickets.agency_id` is copied from the client's parent at creation rather than joined through on read, so moving a client to a different agency leaves historical tickets with the agency that actually handled them.
 
@@ -414,7 +451,7 @@ Tests live in `src/components/AppNav.test.jsx`. **jsdom applies no CSS**, so the
 
 ### Routing
 
-`src/App.jsx` holds the whole route table: `/login`, `/set-password`, `/tickets`, `/tickets/new`, `/tickets/:id`, `/accounts`. `/tickets` carries two search params — `?view=resolved` for the resolved list and `?agency=` for an admin's picker — rather than having routes of their own. **There is no `/register`** — it was removed when sign-up became top-down. Three guards wrap route elements:
+`src/App.jsx` holds the whole route table: `/login`, `/set-password`, `/tickets`, `/tickets/new`, `/tickets/:id`, `/accounts`. `/tickets` carries three search params — `?view=resolved` for the resolved list, `?agency=` for an admin's picker and `?sort=` for the list order — rather than having routes of their own. All three are written through `withParam`, which merges; see "Sorting a list". **There is no `/register`** — it was removed when sign-up became top-down. Three guards wrap route elements:
 
 - `ProtectedRoute` — requires a session; optional `requiredRole` prop, redirects to `/tickets` if the role is too low. `/accounts` uses `requiredRole={ROLES.AGENCY}`, which admits agencies and admins because the check is inclusive upward.
 - `GuestRoute` — bounces signed-in users away from `/login`.
@@ -446,7 +483,7 @@ Vitest with jsdom; config lives in the `test` block of `vite.config.js`, not a s
 
 Page-level tests mock `../api/auth` (and `../api/tickets`) wholesale and drive the real `<App />`, setting the starting route with `window.history.pushState` before `render`. That exercises the actual guards and routing rather than a component in isolation, and keeps the tests off the network — the `src/api/` boundary is what makes a one-module mock sufficient. **Every test file rendering `<App />` must mock the api modules**, including the smoke test; without it `getCurrentUser` makes a real request and `AuthProvider` renders its error screen.
 
-The 216 tests cover the React tier and `shared/`. **The `server/` routes still have no automated tests** — the highest-value gap in the project, and the chat raised the stakes: `canPostMessage` is unit-tested in `shared/`, but nothing yet asserts that the *route* consults it, so a leak there would surface as one tenant reading another's conversation rather than as a broken page. The unread query is in the same position — `unread_count` is computed only in SQL, so nothing catches it if the viewer parameter is ever wired to the wrong id. Both need a throwaway test database and an HTTP harness (`supertest`), neither of which exists yet.
+The 217 tests cover the React tier and `shared/`. **The `server/` routes still have no automated tests** — the highest-value gap in the project, and the chat raised the stakes: `canPostMessage` is unit-tested in `shared/`, but nothing yet asserts that the *route* consults it, so a leak there would surface as one tenant reading another's conversation rather than as a broken page. The unread query is in the same position — `unread_count` is computed only in SQL, so nothing catches it if the viewer parameter is ever wired to the wrong id. Both need a throwaway test database and an HTTP harness (`supertest`), neither of which exists yet.
 
 Mocked API functions must `mockResolvedValue`, not bare `vi.fn()`, when the component chains off the returned promise — `markTicketRead(...).catch(…)` throws on a mock that returns `undefined`.
 
@@ -460,7 +497,9 @@ Query the login password box as `getByLabelText('Password')`, exactly. `Password
 
 ## Environment note
 
-Node here is v18.2.0. **Web Crypto is not a global in module files** on this version — it arrives by default in Node 19. Every entry point that touches `shared/password.js` therefore installs it:
+**Node here is v20.20.2 now** — most of this project was built on v18.2.0, and the Web Crypto polyfills below are from that era. They are guarded (`if (!globalThis.crypto?.subtle)`) so on Node 19+ they are no-ops, and they stay deliberately: they cost nothing, and removing them would break the project for anyone still on 18 in a way that only shows up as a failed login.
+
+**Web Crypto is not a global in module files** before Node 19. Every entry point that touches `shared/password.js` therefore installs it:
 
 | Entry point | Why |
 |---|---|
@@ -468,7 +507,7 @@ Node here is v18.2.0. **Web Crypto is not a global in module files** on this ver
 | `scripts/generate-seed.mjs` | hashing seed passwords |
 | `src/test/setup.js` | jsdom lacks `SubtleCrypto` |
 
-**Do not "verify" this with `node -e`.** Node 18 exposes `globalThis.crypto` inside `-e` one-liners but *not* in `.js`/`.mjs` files, so a one-liner reports the global as present when the server would fail. Test with a real file. This cost a debugging session: without the polyfill every hash throws, `verifyPassword` returned false, and login reported "Email or password is incorrect" with nothing in the logs.
+**On Node 18, do not "verify" this with `node -e`.** It exposes `globalThis.crypto` inside `-e` one-liners but *not* in `.js`/`.mjs` files, so a one-liner reports the global as present when the server would fail. Test with a real file. This cost a debugging session: without the polyfill every hash throws, `verifyPassword` returned false, and login reported "Email or password is incorrect" with nothing in the logs.
 
 `shared/password.js` now derives **outside** its try/catch — only base64 decoding is tolerated, since a malformed stored hash is a genuine non-match while a missing crypto implementation is a broken environment that must surface loudly.
 

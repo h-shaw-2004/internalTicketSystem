@@ -8,7 +8,17 @@ import {
 } from '../../shared/tickets.js';
 import { clickableRow } from '../lib/clickableRow';
 
-const formatDate = (value) => new Date(value).toLocaleDateString();
+/*
+ * Date *and* time, because "raised at 09:14" is what tells an agency whether a
+ * ticket landed this morning or overnight — a date alone flattens everything
+ * raised today into one indistinguishable group.
+ *
+ * Short styles rather than the bare `toLocaleString()` the detail page uses:
+ * that includes seconds, which are noise in a table column and would widen the
+ * one column with the least to say.
+ */
+const formatDateTime = (value) =>
+  new Date(value).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
 
 /**
  * Shared summary table. `showClient` is off for a client's own list, where every
@@ -138,7 +148,7 @@ export default function TicketTable({ tickets, showClient = false }) {
                   {[
                     showClient ? ticket.client?.fullName : null,
                     DEPARTMENT_LABELS[ticket.department] ?? ticket.department,
-                    formatDate(ticket.createdAt),
+                    formatDateTime(ticket.createdAt),
                   ]
                     .filter(Boolean)
                     .join(' · ')}
@@ -158,7 +168,7 @@ export default function TicketTable({ tickets, showClient = false }) {
                   {STATUS_LABELS[ticket.status] ?? ticket.status}
                 </span>
               </td>
-              <td className="col-secondary">{formatDate(ticket.createdAt)}</td>
+              <td className="col-secondary">{formatDateTime(ticket.createdAt)}</td>
             </tr>
           ))}
         </tbody>

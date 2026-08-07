@@ -657,6 +657,26 @@ describe('agency ticket list', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('shows when a ticket was raised, to the minute', async () => {
+    signedInAs('agency');
+    ticketsApi.listAgencyTickets.mockResolvedValue([ticket()]);
+
+    render(<App />);
+
+    // Formatted the way the component does, so the assertion holds in any
+    // timezone the suite runs in.
+    const raised = new Date('2026-07-28T09:00:00.000Z').toLocaleString(undefined, {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText(raised)).toBeInTheDocument();
+    // The point of the column: a date alone flattens everything raised today
+    // into one indistinguishable group.
+    expect(raised).toMatch(/\d{1,2}:\d{2}/);
+  });
+
   it('summarises the list by status above the table', async () => {
     signedInAs('agency');
     ticketsApi.listAgencyTickets.mockResolvedValue([
