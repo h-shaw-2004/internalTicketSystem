@@ -413,6 +413,235 @@ describe('client ticket list', () => {
   });
 });
 
+/*
+ * Ordering a list. The comparators themselves are covered in
+ * shared/tickets.test.js; what these cover is that the control is wired to the
+ * URL, that the URL reaches the table, and that it shares the query string with
+ * the other two view controls without trampling them.
+ */
+describe('sorting the list', () => {
+  const mixed = [
+    ticket({
+      id: 't1',
+      subject: 'Quietly critical',
+      urgency: 'critical',
+      status: 'on_hold',
+      createdAt: '2026-07-01T09:00:00.000Z',
+      updatedAt: '2026-07-01T09:00:00.000Z',
+    }),
+    ticket({
+      id: 't2',
+      subject: 'Just replied to',
+      urgency: 'low',
+      status: 'open',
+      createdAt: '2026-07-02T09:00:00.000Z',
+      updatedAt: '2026-07-09T09:00:00.000Z',
+    }),
+  ];
+
+  const subjects = () =>
+    within(screen.getByRole('table'))
+      .getAllByRole('link')
+      .map((link) => link.textContent);
+
+  it('leads with the most recent activity before anything is chosen', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue(mixed);
+
+    render(<App />);
+    await screen.findByRole('table');
+
+    // Raised second, but replied to since — a queue is worked from whatever
+    // just moved.
+    expect(subjects()).toEqual(['Just replied to', 'Quietly critical']);
+    expect(screen.getByLabelText(/sort/i)).toHaveValue('activity');
+  });
+
+  it('reorders the table when another order is chosen', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue(mixed);
+
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText(/sort/i), { target: { value: 'urgency' } });
+
+    expect(subjects()).toEqual(['Quietly critical', 'Just replied to']);
+  });
+
+  it('takes the order from the URL, so a sorted list is linkable', async () => {
+    signedInAs('client', '/tickets?sort=urgency');
+    ticketsApi.listMyTickets.mockResolvedValue(mixed);
+
+    render(<App />);
+    await screen.findByRole('table');
+
+    expect(screen.getByLabelText(/sort/i)).toHaveValue('urgency');
+    expect(subjects()).toEqual(['Quietly critical', 'Just replied to']);
+  });
+
+  it('ignores an order it does not recognise rather than breaking the page', async () => {
+    signedInAs('client', '/tickets?sort=alphabetical');
+    ticketsApi.listMyTickets.mockResolvedValue(mixed);
+
+    render(<App />);
+    await screen.findByRole('table');
+
+    expect(screen.getByLabelText(/sort/i)).toHaveValue('activity');
+  });
+
+  it('keeps the default out of the URL', async () => {
+    signedInAs('client', '/tickets?sort=urgency');
+    ticketsApi.listMyTickets.mockResolvedValue(mixed);
+
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText(/sort/i), { target: { value: 'activity' } });
+
+    expect(window.location.search).toBe('');
+  });
+
+  it('replays the table entrance when the order changes', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue(mixed);
+
+    render(<App />);
+    const before = await screen.findByRole('table');
+    expect(before.closest('.table-settle')).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/sort/i), { target: { value: 'urgency' } });
+
+    // jsdom applies no CSS, so the settle itself is not observable. What makes
+    // it replay is the table being a new element — keyed on the sort — and that
+    // is.
+    expect(screen.getByRole('table')).not.toBe(before);
+  });
+
+  it('leaves the table alone when nothing about the order changed', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue(mixed);
+
+    render(<App />);
+    const before = await screen.findByRole('table');
+
+    // Re-rendering for any other reason must not remount it, or every 30s poll
+    // would animate a list somebody is reading.
+    fireEvent.change(screen.getByLabelText(/sort/i), { target: { value: 'activity' } });
+
+    expect(screen.getByRole('table')).toBe(before);
+  });
+
+  it('hides the control when there is nothing to order', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue([ticket()]);
+
+    render(<App />);
+    await screen.findByRole('table');
+
+    // A control that cannot change anything is noise above a one-line table.
+    expect(screen.queryByLabelText(/sort/i)).not.toBeInTheDocument();
+  });
+
+  it('hides it on the Resolved view when only one ticket is resolved', async () => {
+    signedInAs('client', '/tickets?view=resolved');
+    ticketsApi.listMyTickets.mockResolvedValue([
+      ...mixed,
+      ticket({ id: 't3', subject: 'Sorted last week', status: 'resolved', unreadCount: 0 }),
+    ]);
+
+    render(<App />);
+    await screen.findByRole('table');
+
+    // Three tickets on the list, but this view shows one row — the question is
+    // about the table on screen, not about the fetch behind it.
+    expect(screen.queryByLabelText(/sort/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps it when only the archive is worth ordering', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue([
+      ticket({ id: 't1', subject: 'Still broken', status: 'open' }),
+      ticket({ id: 't2', subject: 'Sorted last week', status: 'resolved', unreadCount: 0 }),
+      ticket({ id: 't3', subject: 'Sorted last month', status: 'resolved', unreadCount: 0 }),
+    ]);
+
+    render(<App />);
+    await screen.findByText(/resolved \(2\)/i);
+
+    // One active row, so the table it sits above cannot be reordered — but the
+    // same control orders the archive underneath, which can.
+    expect(screen.getByLabelText(/sort/i)).toBeInTheDocument();
+  });
+
+  it('keeps it when everything is resolved', async () => {
+    signedInAs('client');
+    ticketsApi.listMyTickets.mockResolvedValue([
+      ticket({ id: 't1', subject: 'Sorted last week', status: 'resolved', unreadCount: 0 }),
+      ticket({ id: 't2', subject: 'Sorted last month', status: 'resolved', unreadCount: 0 }),
+    ]);
+
+    render(<App />);
+    await screen.findByText(/nothing outstanding/i);
+
+    // The active list is empty, so the control sits above the empty state — but
+    // a client whose work is all resolved would otherwise have no way to order
+    // the only tickets they have.
+    expect(screen.getByLabelText(/sort/i)).toBeInTheDocument();
+  });
+
+  it('survives switching to the Resolved view', async () => {
+    signedInAs('client', '/tickets?sort=urgency');
+    ticketsApi.listMyTickets.mockResolvedValue(mixed);
+
+    render(<App />);
+    const filter = await screen.findByRole('group', { name: /show/i });
+    fireEvent.click(within(filter).getByRole('link', { name: /resolved/i }));
+
+    // The tabs write `view` and leave every other param alone.
+    expect(window.location.search).toBe('?sort=urgency&view=resolved');
+  });
+
+  it('survives picking an agency', async () => {
+    signedInAs('admin', '/tickets?sort=urgency');
+    authApi.listChildAccounts.mockResolvedValue([
+      { id: 'agency-1', fullName: 'Agency One', email: 'one@agency.com', role: 'agency' },
+    ]);
+    ticketsApi.listTicketsForAgency.mockResolvedValue(mixed);
+
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText(/agency/i), {
+      target: { value: 'agency-1' },
+    });
+    await screen.findByRole('table');
+
+    // The picker used to hand setSearchParams a fresh object, which threw the
+    // sort away every time an agency was chosen.
+    expect(window.location.search).toBe('?sort=urgency&agency=agency-1');
+  });
+
+  it('orders both of an admin panel from the one setting', async () => {
+    signedInAs('admin');
+    authApi.listChildAccounts.mockResolvedValue([
+      { id: 'agency-1', fullName: 'Agency One', email: 'one@agency.com', role: 'agency' },
+    ]);
+    ticketsApi.listEscalatedTickets.mockResolvedValue(mixed);
+    ticketsApi.listTicketsForAgency.mockResolvedValue(mixed);
+
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText(/agency/i), {
+      target: { value: 'agency-1' },
+    });
+    await screen.findAllByRole('table');
+
+    // Two controls, one query param: sort is how you read ticket lists, not a
+    // property of one list, so both panels answer to it.
+    const [escalatedSort, agencySort] = screen.getAllByLabelText(/sort/i);
+    fireEvent.change(agencySort, { target: { value: 'urgency' } });
+
+    expect(escalatedSort).toHaveValue('urgency');
+    for (const table of screen.getAllByRole('table')) {
+      expect(within(table).getAllByRole('link')[0]).toHaveTextContent('Quietly critical');
+    }
+  });
+});
+
 describe('agency ticket list', () => {
   it('names the client on every row', async () => {
     signedInAs('agency');

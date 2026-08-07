@@ -125,6 +125,23 @@ h3 {
   animation: fade var(--base) var(--ease) both;
 }
 
+/*
+ * A ticket table, re-run whenever the list is re-ordered.
+ *
+ * The same `rise` the panels use rather than a spinner or a dimmed overlay:
+ * sorting is synchronous over a list already in memory, so there is nothing to
+ * wait for and a loading state would be theatre. What the settle does is stop a
+ * re-sort being a jump-cut — every row changes place at once, and 6px of
+ * movement is enough to read it as the same table rearranging rather than a
+ * different one appearing.
+ *
+ * Deliberately the existing 200ms. Slower would be waiting; a stagger down the
+ * rows would draw more attention to the sort than to the tickets.
+ */
+.table-settle {
+  animation: rise var(--base) var(--ease) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -246,6 +263,34 @@ h3 {
 
 .field-inline {
   max-width: 360px;
+}
+
+/*
+ * A form control laid out as a toolbar item — label beside its input rather
+ * than above it, for a control that acts on the page instead of collecting an
+ * answer.
+ *
+ * Written doubled rather than as a bare `.field-row`, so it beats `.field`'s
+ * own `flex-direction` on specificity instead of on which of the two happens to
+ * be declared later in this file.
+ */
+.field.field-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+}
+
+/* An aside beside the control, not a heading over a form field. */
+.field.field-row > span {
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.field.field-row select {
+  width: auto;
+  padding: 7px 10px;
+  font-size: 13px;
 }
 
 .hint {
@@ -754,7 +799,15 @@ h3 {
  * on a phone — and so a control that genuinely belongs on both can opt out.
  */
 @media (max-width: 899px) {
-  .wide-only {
+  /*
+   * Doubled deliberately. A media query adds no specificity, so a plain
+   * `.wide-only` ties with the element's own class and loses to it on source
+   * order alone — `.view-filter { display: grid }`, declared further down the
+   * file, is exactly how the mobile Open/Resolved tabs once appeared on
+   * desktop. `.x.x` is 0,2,0 with no !important, so a visibility utility can
+   * never be beaten by the single class it sits beside.
+   */
+  .wide-only.wide-only {
     display: none;
   }
 
@@ -787,8 +840,8 @@ h3 {
   .app-nav,
   .nav-toggle,
   .nav-scrim,
-  /* The mirror of .wide-only: things that exist only where the drawer does. */
-  .narrow-only {
+  /* The mirror of .wide-only, doubled for the same reason. */
+  .narrow-only.narrow-only {
     display: none;
   }
 }
@@ -797,6 +850,24 @@ h3 {
   max-width: 1040px;
   margin: 0 auto;
   padding: 32px;
+}
+
+/*
+ * A page that is nothing but one form. The 1040px column exists for tables, and
+ * a form left at that width strands its 400px of fields against the left edge
+ * of a very wide panel with half a screen of empty white beside them. Narrowing
+ * the column instead of widening the fields keeps the line lengths readable —
+ * a 900px-wide text input is not an improvement.
+ *
+ * `.stack-form`'s own cap then has nothing left to do here, so the fields fill
+ * the panel rather than stopping short of it.
+ */
+.app-main-form {
+  max-width: 620px;
+}
+
+.app-main-form .stack-form {
+  max-width: none;
 }
 
 @media (max-width: 640px) {
@@ -1102,6 +1173,10 @@ h3 {
  * The small-screen counterpart to the resolved archive. A segmented control
  * rather than two nav items, because it is a filter of one list and needs to
  * say so — and because showing both counts side by side is the whole point.
+ *
+ * It carries `.narrow-only`, which is declared much earlier in this file. The
+ * `display: grid` below would win on source order if that utility were not
+ * specificity-doubled — see the note on it.
  */
 .view-filter {
   display: grid;
@@ -1154,6 +1229,25 @@ h3 {
 .view-filter-option-current .view-filter-count {
   color: var(--accent);
   background: var(--accent-bg);
+}
+
+/* --- List toolbar --------------------------------------------------------- */
+
+/*
+ * The strip between the counts and the table, holding whatever acts on the list
+ * below it — the sort select today.
+ *
+ * Right-aligned on purpose: flush left it reads as another heading introducing
+ * the table, and every panel here already opens with one. Against the right
+ * edge it reads as a control belonging to the table it sits on.
+ */
+.list-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 0 0 12px;
 }
 
 /* --- Ticket count tiles --------------------------------------------------- */
@@ -1300,9 +1394,10 @@ h3 {
  * vanishing. Quiet by default — muted, closed, no accent — because it is
  * deliberately not where anyone should be looking, but it stays one click away.
  *
- * Desktop only (`.wide-only` at the call site): on a phone the drawer's
- * Resolved item goes to `?view=resolved` instead, because a collapsed archive
- * underneath a full list is a long scroll on a small screen.
+ * Desktop only (`.wide-only` at the call site): below 900px the segmented
+ * Open / Resolved control above the table goes to `?view=resolved` instead,
+ * because a collapsed archive underneath a full list is a long scroll on a
+ * small screen.
  */
 .archive {
   margin-top: 18px;
@@ -1635,6 +1730,29 @@ h3 {
   .stack-form,
   .field-inline {
     max-width: none;
+  }
+
+  /*
+   * The sort control spans the panel instead of hugging the right edge. A lone
+   * select against the right of a 360px screen reads as stranded, and there is
+   * no second control for it to line up with.
+   *
+   * It stays label-beside-select — the pair fits on one line at this width, and
+   * stacking them would cost a row above every table for no gain. The select
+   * takes whatever the label leaves, with `min-width: 0` so a long option name
+   * shrinks the box rather than pushing the page sideways.
+   */
+  .field.field-row {
+    width: 100%;
+  }
+
+  .field.field-row select {
+    flex: 1;
+    min-width: 0;
+    /* Back to a comfortable tap target — the toolbar's compact box is a
+       pointer-sized affordance. */
+    min-height: 40px;
+    font-size: 14px;
   }
 
   /* Full-width primary actions are easier to hit with a thumb. */

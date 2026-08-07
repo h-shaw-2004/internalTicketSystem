@@ -201,6 +201,32 @@ Reopening restores all three to loud, for free, because status goes back to `ope
 
 `.badge-escalated` does double duty as a `markClass` on the summary mark, which is why the quiet variant is a separate class rather than an override of it.
 
+### Sorting a list
+
+`?sort=` on `/tickets`, one of four values, applied in the browser to the list already fetched. `shared/tickets.js` owns the vocabulary (`SORT_ORDER`, `SORT_LABELS`, `DEFAULT_SORT`, `isSort`) and `sortTickets(tickets, sort)`.
+
+**Not drag-and-drop, deliberately.** The queues are shared — an escalated ticket sits in the agency's list *and* the admin's — so a hand-placed order either needs per-viewer position state written on every drag, or it silently rearranges somebody else's queue. It also goes stale invisibly against a list that polls every 30s, and row DnD wants cards, which would cost the table semantics this codebase keeps everywhere. Priority is already a field (`urgency`), set on the ticket and enforced server-side; manual order would be a second, weaker signal that can disagree with it.
+
+**The comparators derive from `STATUS_ORDER` and `URGENCY_ORDER`** rather than listing their own sequence, so a dropdown can never order tickets in a way the badges and the summary tiles disagree with. Every comparator falls back to activity, making the order total instead of leaving ties to however the rows arrived. Unknown values sort **last in both directions**, which needs the two handled separately: `indexOf` returns -1, which is below every real value, so it lands last descending and first ascending — `statusRank` pushes it past the end, `severity` leaves it at -1 precisely because urgency runs the other way.
+
+`sortTickets` returns a copy. `TicketSummary` counts from the same array and the archive is split out of it, so an in-place sort would reorder a list other components are still holding.
+
+**The default is activity, not raised date.** A queue is worked from whatever just moved; a ticket replied to an hour ago wants attention more than one raised last week and untouched since. The server still returns `created_at desc`, which is only the tie-break. Choosing the default **removes the param** rather than writing `?sort=activity`.
+
+**Client-side, because the whole list is needed anyway** — the summary counts from it and the archive is split out of it, so a server-side sort would cost a round trip and buy nothing. If lists ever grow enough to hurt, the answer is pagination first and only then a SQL sort.
+
+**A select, not sortable column headers.** Below 640px the table narrows to Subject alone, so headers would need a select beside them anyway and the two would have to agree — the same "one control rather than two" call as `backTo`. **It appears only once something it governs has two rows**, and that question is asked per view, because the two views govern different tables. The resolved view shows the archive alone, so it counts `archived`; the default view's one control orders the active table *and* the archive collapsed underneath it, so it counts either. Counting the whole list instead put a sort control over a single resolved row, and counting only the visible table would leave a long archive unsortable whenever the active list happened to be short. That is also why the control sits *outside* the active/empty branch on the default view — a client whose work is all resolved would otherwise have no way to order the only tickets they have.
+
+An admin's page renders **two selects bound to one param** (hence `useId`). That is on purpose and is *not* the case ruled out for the Open/Resolved tabs: each select sits above its own table and sorts it — they merely share the setting, because sort is a preference about how you read ticket lists rather than a property of one list.
+
+**Three controls now write to one query string** — sort, the Open/Resolved tabs, and the admin's agency picker. Every one of them merges through `withParam` instead of handing `setSearchParams` a fresh object. The picker used to do exactly that, which would now throw the sort away on every selection.
+
+**Re-sorting replays the table's entrance** — `.table-settle`, the same `rise` (6px, 200ms) the panels use. Not a spinner or a dimmed overlay: sorting is synchronous over a list already in memory, so there is nothing to wait for and a loading state would be theatre. The settle exists so a re-sort is not a jump-cut, since every row changes place at once.
+
+It replays because `TicketTable` is **keyed on the sort**, so choosing one remounts it. A poll leaves the key alone and therefore never animates — the same instinct as `useAsync` not setting `loading` on a background re-run. jsdom applies no CSS, so the test asserts the table is a *new element* after a sort change and the *same* element otherwise. `prefers-reduced-motion` is already handled by the global killswitch at the top of the file; nothing extra is needed per animation.
+
+Layout: `.list-tools` is the strip between the counts and the table, right-aligned so it reads as a control over that table rather than as another heading. `.field.field-row` is the label-beside-input form control it holds — **doubled class**, so it beats `.field`'s own `flex-direction` on specificity rather than on source order. Below 640px it spans the panel and the select gets a 40px tap target; it stays label-beside-select, since the pair fits one line even at 360px.
+
 ### Reopening — a client refusing a resolution
 
 `POST /tickets/:id/reopen` moves `resolved` back to `open` and posts the client's reason into the thread, in one data-modifying CTE so a ticket can never come back with no explanation on it.
@@ -359,6 +385,8 @@ The drawer closes four ways — its own × button, the scrim, Escape, and naviga
 
 **Two grid/flex traps caused horizontal scrollbars on phones, and both are easy to reintroduce.** A bare `1fr` is `minmax(auto, 1fr)` and refuses to shrink below its content's min-content width, so one unbreakable value (an email) pushes the whole page sideways — `.detail-grid` uses `minmax(0, 1fr)` at both widths for that reason. Flex items default to `min-width: auto` for the same reason, which is what `.app-main-stack > * { min-width: 0 }` fixes. If a page scrolls sideways on a phone, look for those two before anything else.
 
+**`/tickets/new` narrows the column rather than widening the fields.** `.app-main`'s 1040px exists for tables; a page that is only a form left at that width strands 400px of fields against the left edge of a very wide panel. `.app-main-form` caps that one page at 620px and clears `.stack-form`'s own 400px so the fields fill the panel. Widening the inputs instead would have given the subject line a 900px text box, which is worse to read and worse to type into. `Accounts` keeps the full width — it carries tables as well as a form.
+
 **The Accounts tables move the email under the name instead of dropping it.** Email is the widest column *and* the one that cannot go — it is the account's identity and what "Password not set" refers to — so dropping the cheap column alone still overflowed. Below 640px `.col-secondary` hides the Email and Created columns and `.cell-sub` reveals the address under the name, leaving Account + Status (and Clients on the admin's agencies table).
 
 `.cell-sub` is `display: none` by default and revealed **in the very block that hides `.col-secondary`**, so the two can never both show and the address is never on screen twice. That pairing is why it is not a general utility class — a `.narrow-only`-style class at 900px would have left both visible between 641 and 899px.
@@ -379,6 +407,8 @@ Faking cards with `display: block` on rows would throw away the row and column s
 The sub-line **joins its three values into one string** (`Client · Department · Date`) rather than rendering separate nodes. That is deliberate: an exact-text query like `getByText('Hardware')` then still matches only the real cell, so the duplication costs no test churn — unlike the Accounts tables, where the email is its own exact string in both places and lookups need `getAllByText(...)[0]`.
 
 **Duplicate selectors are how this file breaks.** The mobile overrides live in a `@media (max-width: 899px)` block that relies purely on source order — a media query adds no specificity — so a second copy of `.header-actions` appearing later in the file silently re-showed sign-out at the top of every phone screen. `grep -oE "^\.[a-z-]+ \{" src/index.css | sort | uniq -d` catches it; the only legitimate repeats are `.auth-card`, `.notice` and `.summary-row`, which appear once for animation and once for layout.
+
+That grep only catches *identical* selectors, and the same failure happens across different ones: `.narrow-only { display: none }` sits at the top of the file and `.view-filter { display: grid }` far below it, so the mobile Open/Resolved tabs rendered on desktop alongside the archive they replace. **`.wide-only` and `.narrow-only` are therefore written doubled** — `.wide-only.wide-only` — which is 0,2,0 with no `!important`, so a visibility utility can never lose to the single class it sits beside however far down the file that class is declared. Keep the doubling if you touch those two rules; nothing else in the file needs it, because nothing else is a utility that must always win.
 
 Tests live in `src/components/AppNav.test.jsx`. **jsdom applies no CSS**, so the desktop/drawer split is not observable and every element is findable regardless of media queries — which is why page tests that query for things the drawer also carries (`Raise a ticket`, `Accounts`) scope to `within(screen.getByRole('main'))`, and header tests scope to `within(screen.getByRole('banner'))`.
 
@@ -416,7 +446,7 @@ Vitest with jsdom; config lives in the `test` block of `vite.config.js`, not a s
 
 Page-level tests mock `../api/auth` (and `../api/tickets`) wholesale and drive the real `<App />`, setting the starting route with `window.history.pushState` before `render`. That exercises the actual guards and routing rather than a component in isolation, and keeps the tests off the network — the `src/api/` boundary is what makes a one-module mock sufficient. **Every test file rendering `<App />` must mock the api modules**, including the smoke test; without it `getCurrentUser` makes a real request and `AuthProvider` renders its error screen.
 
-The 192 tests cover the React tier and `shared/`. **The `server/` routes still have no automated tests** — the highest-value gap in the project, and the chat raised the stakes: `canPostMessage` is unit-tested in `shared/`, but nothing yet asserts that the *route* consults it, so a leak there would surface as one tenant reading another's conversation rather than as a broken page. The unread query is in the same position — `unread_count` is computed only in SQL, so nothing catches it if the viewer parameter is ever wired to the wrong id. Both need a throwaway test database and an HTTP harness (`supertest`), neither of which exists yet.
+The 216 tests cover the React tier and `shared/`. **The `server/` routes still have no automated tests** — the highest-value gap in the project, and the chat raised the stakes: `canPostMessage` is unit-tested in `shared/`, but nothing yet asserts that the *route* consults it, so a leak there would surface as one tenant reading another's conversation rather than as a broken page. The unread query is in the same position — `unread_count` is computed only in SQL, so nothing catches it if the viewer parameter is ever wired to the wrong id. Both need a throwaway test database and an HTTP harness (`supertest`), neither of which exists yet.
 
 Mocked API functions must `mockResolvedValue`, not bare `vi.fn()`, when the component chains off the returned promise — `markTicketRead(...).catch(…)` throws on a mock that returns `undefined`.
 

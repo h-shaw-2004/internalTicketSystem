@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { ROLES } from './roles.js';
 import {
+  DEFAULT_SORT,
   DEPARTMENT_LABELS,
   DEPARTMENT_ORDER,
   MAX_MESSAGE_LENGTH,
   MESSAGE_KINDS,
+  SORT_LABELS,
+  SORT_ORDER,
   STATUS_LABELS,
   STATUS_ORDER,
+  TICKET_SORTS,
   TICKET_STATUSES,
   URGENCY_LABELS,
   URGENCY_ORDER,
@@ -22,8 +26,11 @@ import {
   isDepartment,
   isReopenNotice,
   isReopened,
+  isSort,
+  isSort,
   isStatus,
   isUrgency,
+  sortTickets,
 } from './tickets.js';
 
 describe('ticket vocabulary', () => {
@@ -58,6 +65,93 @@ describe('ticket vocabulary', () => {
     expect(isUrgency('critical')).toBe(true);
     expect(isUrgency('whenever')).toBe(false);
     expect(isStatus(undefined)).toBe(false);
+  });
+});
+
+describe('sorting', () => {
+  // Deliberately out of every order under test, so a comparator that does
+  // nothing cannot accidentally pass.
+  const at = (day) => `2026-07-${String(day).padStart(2, '0')}T09:00:00.000Z`;
+
+  const list = [
+    { id: 'a', urgency: 'medium', status: 'resolved', createdAt: at(1), updatedAt: at(9) },
+    { id: 'b', urgency: 'critical', status: 'on_hold', createdAt: at(5), updatedAt: at(6) },
+    { id: 'c', urgency: 'low', status: 'open', createdAt: at(3), updatedAt: at(3) },
+  ];
+
+  const ids = (sort) => sortTickets(list, sort).map((ticket) => ticket.id);
+
+  it('labels every option', () => {
+    expect(SORT_ORDER).toEqual(Object.values(TICKET_SORTS));
+    for (const sort of SORT_ORDER) expect(SORT_LABELS[sort]).toBeTruthy();
+    expect(isSort(DEFAULT_SORT)).toBe(true);
+    expect(isSort('whenever')).toBe(false);
+  });
+
+  it('puts the most recently touched first by default', () => {
+    // 'a' is the oldest ticket here and still comes first, which is the whole
+    // point of activity being the default rather than raised date.
+    expect(ids(DEFAULT_SORT)).toEqual(['a', 'b', 'c']);
+    expect(ids(TICKET_SORTS.ACTIVITY)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('orders by raised date independently of activity', () => {
+    expect(ids(TICKET_SORTS.RAISED)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('puts critical at the top, not the bottom', () => {
+    expect(ids(TICKET_SORTS.URGENCY)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('orders by status in lifecycle order', () => {
+    expect(ids(TICKET_SORTS.STATUS)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('falls back to activity to break ties', () => {
+    const tied = [
+      { id: 'older', urgency: 'high', status: 'open', createdAt: at(1), updatedAt: at(2) },
+      { id: 'newer', urgency: 'high', status: 'open', createdAt: at(1), updatedAt: at(8) },
+    ];
+
+    expect(sortTickets(tied, TICKET_SORTS.URGENCY).map((t) => t.id)).toEqual(['newer', 'older']);
+    expect(sortTickets(tied, TICKET_SORTS.STATUS).map((t) => t.id)).toEqual(['newer', 'older']);
+  });
+
+  it('sorts values it has never heard of to the bottom, both directions', () => {
+    const odd = [
+      { id: 'junk', urgency: 'whenever', status: 'archived', createdAt: at(9), updatedAt: at(9) },
+      { id: 'real', urgency: 'low', status: 'resolved', createdAt: at(1), updatedAt: at(1) },
+    ];
+
+    expect(sortTickets(odd, TICKET_SORTS.URGENCY).map((t) => t.id)).toEqual(['real', 'junk']);
+    expect(sortTickets(odd, TICKET_SORTS.STATUS).map((t) => t.id)).toEqual(['real', 'junk']);
+  });
+
+  it('falls back to the default for a sort it does not recognise', () => {
+    // The value arrives from the query string, where anyone can type anything.
+    expect(ids('?; drop table')).toEqual(ids(DEFAULT_SORT));
+    expect(ids(undefined)).toEqual(ids(DEFAULT_SORT));
+  });
+
+  it('returns a copy, leaving the original alone', () => {
+    const original = [...list];
+    sortTickets(list, TICKET_SORTS.URGENCY);
+
+    // TicketSummary counts from the same array and the archive is split out of
+    // it — sorting in place would reorder a list other components still hold.
+    expect(list).toEqual(original);
+  });
+
+  it('treats a missing updatedAt as the raised date', () => {
+    const partial = [
+      { id: 'no-update', urgency: 'low', status: 'open', createdAt: at(9) },
+      { id: 'updated', urgency: 'low', status: 'open', createdAt: at(1), updatedAt: at(5) },
+    ];
+
+    expect(sortTickets(partial, TICKET_SORTS.ACTIVITY).map((t) => t.id)).toEqual([
+      'no-update',
+      'updated',
+    ]);
   });
 });
 

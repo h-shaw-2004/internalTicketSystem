@@ -82,6 +82,110 @@ export const isDepartment = (value) => DEPARTMENT_ORDER.includes(value);
 export const isUrgency = (value) => URGENCY_ORDER.includes(value);
 
 // --------------------------------------------------------------------------
+// Sorting
+//
+// How a list is *read*, not what it contains — so it lives beside the
+// vocabulary it sorts by rather than in the page. STATUS_ORDER and
+// URGENCY_ORDER are already the definition of "which comes first"; deriving the
+// comparators from them is what stops a dropdown ordering tickets in a sequence
+// the badges disagree with.
+//
+// Applied in the browser to the list already fetched. The lists are one
+// agency's clients' tickets and the whole list is needed anyway — TicketSummary
+// counts from it and the resolved archive is split out of it — so sorting in
+// SQL would cost a round trip and buy nothing. If lists ever grow enough to
+// hurt, the answer is pagination first, and only then a server-side sort.
+// --------------------------------------------------------------------------
+
+export const TICKET_SORTS = {
+  ACTIVITY: 'activity',
+  RAISED: 'raised',
+  URGENCY: 'urgency',
+  STATUS: 'status',
+};
+
+export const SORT_ORDER = [
+  TICKET_SORTS.ACTIVITY,
+  TICKET_SORTS.RAISED,
+  TICKET_SORTS.URGENCY,
+  TICKET_SORTS.STATUS,
+];
+
+// Each label says which end comes first, because "Urgency" alone leaves you
+// guessing whether critical is at the top or the bottom.
+export const SORT_LABELS = {
+  [TICKET_SORTS.ACTIVITY]: 'Latest activity',
+  [TICKET_SORTS.RAISED]: 'Newest first',
+  [TICKET_SORTS.URGENCY]: 'Most urgent',
+  [TICKET_SORTS.STATUS]: 'Status',
+};
+
+/**
+ * Latest activity, not newest raised.
+ *
+ * A queue is worked from whatever just moved: a ticket somebody replied to an
+ * hour ago wants attention more than one raised last week and untouched since.
+ * The server still returns `created_at desc`, which is only the tie-break here.
+ */
+export const DEFAULT_SORT = TICKET_SORTS.ACTIVITY;
+
+export const isSort = (value) => SORT_ORDER.includes(value);
+
+const time = (value) => {
+  const parsed = Date.parse(value ?? '');
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+/*
+ * Unknown values sort last, whichever direction is being sorted — a status this
+ * build has never heard of belongs at the bottom of a queue, not the top.
+ *
+ * That needs the two directions handled separately: `indexOf` returns -1, which
+ * is *below* every real value, so it lands last going down and first going up.
+ * `statusRank` pushes it past the end instead; `severity` leaves it at -1
+ * precisely because the urgency sort runs the other way.
+ */
+const statusRank = (value) => {
+  const index = STATUS_ORDER.indexOf(value);
+  return index === -1 ? STATUS_ORDER.length : index;
+};
+
+const severity = (value) => URGENCY_ORDER.indexOf(value);
+
+const byActivity = (a, b) =>
+  time(b.updatedAt ?? b.createdAt) - time(a.updatedAt ?? a.createdAt);
+
+const byRaised = (a, b) => time(b.createdAt) - time(a.createdAt);
+
+/*
+ * Every comparator falls back to activity, so the order is total: two tickets
+ * of the same urgency come back in a stable, meaningful sequence rather than in
+ * whatever order the rows happened to arrive.
+ */
+const COMPARATORS = {
+  [TICKET_SORTS.ACTIVITY]: (a, b) => byActivity(a, b) || byRaised(a, b),
+  [TICKET_SORTS.RAISED]: byRaised,
+  // URGENCY_ORDER runs low → critical, so the highest index is the most urgent
+  // and the subtraction is reversed to put it at the top.
+  [TICKET_SORTS.URGENCY]: (a, b) => severity(b.urgency) - severity(a.urgency) || byActivity(a, b),
+  // STATUS_ORDER is already the lifecycle order the badges and tiles use.
+  [TICKET_SORTS.STATUS]: (a, b) => statusRank(a.status) - statusRank(b.status) || byActivity(a, b),
+};
+
+/**
+ * A sorted copy. Never sorts in place — the same array is handed to
+ * TicketSummary for its counts and split into the resolved archive, and an
+ * in-place sort would reorder a list other components are already holding.
+ *
+ * An unrecognised sort falls back to the default rather than throwing: the
+ * value arrives from the query string, where anyone can type anything.
+ */
+export function sortTickets(tickets, sort = DEFAULT_SORT) {
+  const compare = COMPARATORS[sort] ?? COMPARATORS[DEFAULT_SORT];
+  return [...tickets].sort(compare);
+}
+
+// --------------------------------------------------------------------------
 // Permissions
 //
 // Deliberately expressed as role questions rather than scattered `role ===`

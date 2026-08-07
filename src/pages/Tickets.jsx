@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useId, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { listChildAccounts } from '../api/auth';
@@ -9,7 +9,14 @@ import {
   listTicketsForAgency,
 } from '../api/tickets';
 import { ROLES, canCreateAccounts } from '../../shared/roles.js';
-import { isArchived } from '../../shared/tickets.js';
+import {
+  DEFAULT_SORT,
+  SORT_LABELS,
+  SORT_ORDER,
+  isArchived,
+  isSort,
+  sortTickets,
+} from '../../shared/tickets.js';
 import useAsync from '../lib/useAsync';
 import AsyncBoundary from '../components/AsyncBoundary';
 import TicketTable from '../components/TicketTable';
@@ -28,6 +35,65 @@ import AppHeader from '../components/AppHeader';
 const LIST_POLL_MS = 30_000;
 
 /**
+ * One query string, three controls writing to it — the sort select, the
+ * Open/Resolved tabs and the admin's agency picker.
+ *
+ * Every one of them merges into what is already there rather than handing
+ * `setSearchParams` a fresh object. Replacing wholesale is how picking an agency
+ * silently reset the sort, and how switching to Resolved dropped the agency.
+ *
+ * An empty value removes the key, so a default never appears in the URL.
+ */
+function withParam(params, key, value) {
+  const next = new URLSearchParams(params);
+
+  if (value) next.set(key, value);
+  else next.delete(key);
+
+  return next;
+}
+
+/** The sort in force, falling back to the default for anything hand-typed. */
+const readSort = (params) => {
+  const value = params.get('sort');
+  return isSort(value) ? value : DEFAULT_SORT;
+};
+
+/**
+ * How the list is ordered. A select rather than sortable column headers,
+ * because below 640px there are no columns left to click — the table narrows to
+ * subject alone — and two controls that have to agree with each other is the
+ * trade `backTo` already refused elsewhere.
+ *
+ * It writes to the URL like every other view choice on this page, so an order
+ * survives opening a ticket and coming back (TicketTable hands the detail page
+ * the full path *and* query as `location.state.from`) and a sorted list is
+ * something you can send to someone.
+ *
+ * `useId` because an admin's page renders two of these, one per panel. They
+ * share the query param on purpose: it is a preference about how you read
+ * ticket lists, not a property of one list, so both tables answer to it.
+ */
+function TicketSort({ sort, onChange }) {
+  const id = useId();
+
+  return (
+    <div className="list-tools">
+      <label className="field field-row" htmlFor={id}>
+        <span>Sort</span>
+        <select id={id} value={sort} onChange={(event) => onChange(event.target.value)}>
+          {SORT_ORDER.map((key) => (
+            <option key={key} value={key}>
+              {SORT_LABELS[key]}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/**
  * Open / Resolved, as a filter rather than two nav destinations.
  *
  * Small screens only: desktop keeps the collapsed archive underneath the table,
@@ -38,20 +104,28 @@ const LIST_POLL_MS = 30_000;
  * navigating to find out — the thing two identical nav links could never do.
  */
 function ViewFilter({ openCount, resolvedCount, resolvedView }) {
-  const segment = (to, label, count, current) => (
-    <Link
-      to={to}
-      className={`view-filter-option${current ? ' view-filter-option-current' : ''}`}
-      aria-current={current ? 'page' : undefined}
-    >
-      {label} <span className="view-filter-count">{count}</span>
-    </Link>
-  );
+  const [searchParams] = useSearchParams();
+
+  // Switching halves keeps the sort — and, for an admin on a phone, the chosen
+  // agency. Only `view` changes.
+  const segment = (view, label, count, current) => {
+    const search = withParam(searchParams, 'view', view).toString();
+
+    return (
+      <Link
+        to={{ pathname: '/tickets', search: search ? `?${search}` : '' }}
+        className={`view-filter-option${current ? ' view-filter-option-current' : ''}`}
+        aria-current={current ? 'page' : undefined}
+      >
+        {label} <span className="view-filter-count">{count}</span>
+      </Link>
+    );
+  };
 
   return (
     <div className="view-filter narrow-only" role="group" aria-label="Show">
-      {segment('/tickets', 'Open', openCount, !resolvedView)}
-      {segment('/tickets?view=resolved', 'Resolved', resolvedCount, resolvedView)}
+      {segment('', 'Open', openCount, !resolvedView)}
+      {segment('resolved', 'Resolved', resolvedCount, resolvedView)}
     </div>
   );
 }
@@ -74,13 +148,31 @@ function TicketResults({
   resolvedView = false,
   showViewFilter = false,
 }) {
-  const { active, archived } = useMemo(
-    () => ({
-      active: tickets.filter((ticket) => !isArchived(ticket)),
-      archived: tickets.filter(isArchived),
-    }),
-    [tickets]
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sort = readSort(searchParams);
+
+  /*
+   * Sorted once, then split. Both tables inherit the order, so the archive is
+   * read the same way as the list above it.
+   *
+   * TicketSummary is still handed the unsplit, unfiltered `tickets` — its
+   * counts describe the whole queue, and a sort cannot change them.
+   */
+  const { active, archived } = useMemo(() => {
+    const sorted = sortTickets(tickets, sort);
+
+    return {
+      active: sorted.filter((ticket) => !isArchived(ticket)),
+      archived: sorted.filter(isArchived),
+    };
+  }, [tickets, sort]);
+
+  const chooseSort = (value) =>
+    setSearchParams(withParam(searchParams, 'sort', value === DEFAULT_SORT ? '' : value), {
+      // Trying three orderings should not leave three entries to step back
+      // through, exactly as with the agency picker.
+      replace: true,
+    });
 
   const filter = showViewFilter ? (
     <ViewFilter
@@ -90,6 +182,21 @@ function TicketResults({
     />
   ) : null;
 
+  const tools = <TicketSort sort={sort} onChange={chooseSort} />;
+
+  /*
+   * A control that cannot change anything is noise, so it appears only once
+   * something it governs has two rows to put in an order.
+   *
+   * Asked per view rather than of the whole list, because the two views govern
+   * different tables: the resolved view shows the archive alone, while the
+   * default view's one control orders the active table *and* the archive
+   * collapsed underneath it. Counting the whole list put a sort control over a
+   * single resolved row; counting only the visible table would leave a long
+   * archive unsortable whenever the active list happened to be short.
+   */
+  const sortable = (...lists) => lists.some((list) => list.length > 1);
+
   // The resolved half of the filter, which only exists below 900px.
   if (resolvedView) {
     return (
@@ -98,7 +205,12 @@ function TicketResults({
         <TicketSummary tickets={tickets} />
 
         {archived.length > 0 ? (
-          <TicketTable tickets={archived} showClient={showClient} />
+          <>
+            {sortable(archived) && tools}
+            {/* Keyed on the sort so re-ordering replays the table's entrance —
+                see the note in TicketTable. */}
+            <TicketTable key={sort} tickets={archived} showClient={showClient} />
+          </>
         ) : (
           <p className="muted">Nothing has been resolved here yet.</p>
         )}
@@ -111,8 +223,14 @@ function TicketResults({
       {filter}
       <TicketSummary tickets={tickets} />
 
+      {/*
+       * Outside the branch below, because it governs the archive too — a client
+       * whose work is all resolved would otherwise have no way to order it.
+       */}
+      {sortable(active, archived) && tools}
+
       {active.length > 0 ? (
-        <TicketTable tickets={active} showClient={showClient} />
+        <TicketTable key={sort} tickets={active} showClient={showClient} />
       ) : (
         <p className="muted">Nothing outstanding — everything here has been resolved.</p>
       )}
@@ -120,7 +238,7 @@ function TicketResults({
       {archived.length > 0 && (
         <details className="archive wide-only">
           <summary>Resolved ({archived.length})</summary>
-          <TicketTable tickets={archived} showClient={showClient} />
+          <TicketTable key={sort} tickets={archived} showClient={showClient} />
         </details>
       )}
     </>
@@ -221,8 +339,10 @@ function AdminTickets({ resolvedView }) {
    */
   const [searchParams, setSearchParams] = useSearchParams();
   const agencyId = searchParams.get('agency') ?? '';
+  // Merged rather than replaced: this used to hand over a fresh object, which
+  // now would throw away the sort every time an agency was picked.
   const chooseAgency = (value) =>
-    setSearchParams(value ? { agency: value } : {}, { replace: true });
+    setSearchParams(withParam(searchParams, 'agency', value), { replace: true });
 
   // Only fires once an agency is picked; until then the panel sits idle rather
   // than fetching something nobody asked for.

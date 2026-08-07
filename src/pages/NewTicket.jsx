@@ -56,7 +56,7 @@ export default function NewTicket() {
     <div className="app-layout">
       <AppHeader title="Raise a ticket" backTo="/tickets" />
 
-      <main className="app-main">
+      <main className="app-main app-main-form">
         <section className="panel">
           <p className="muted panel-intro">
             This goes to your agency. Give them enough detail to start without having to

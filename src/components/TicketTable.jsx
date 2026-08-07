@@ -29,7 +29,16 @@ export default function TicketTable({ tickets, showClient = false }) {
   const from = `${location.pathname}${location.search}`;
 
   return (
-    <div className="table-scroll">
+    /*
+     * `table-settle` is the small entrance the panels use, re-run whenever the
+     * list is reordered — Tickets.jsx keys this component on the sort, so
+     * choosing one remounts the table and the animation plays again.
+     *
+     * A poll leaves the key alone, so a background refresh never animates. That
+     * is the same instinct as `useAsync` not setting `loading` on a re-run: the
+     * view should not blink at you for something you did not ask for.
+     */
+    <div className="table-scroll table-settle">
       <table className="account-table">
         <thead>
           <tr>
